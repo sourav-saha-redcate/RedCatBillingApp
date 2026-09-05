@@ -1,0 +1,14 @@
+{
+  "extends": "@react-native/typescript-config",
+  "compilerOptions": {
+    "ignoreDeprecations": "6.0",
+    "baseUrl": ".",
+    "paths": {
+      "@app/*": ["src/*"],
+      "@utils/*": ["src/utils/*"],
+      "@env": ["src/types/env.d.ts"]
+    }
+  },
+  "include": ["**/*.ts", "**/*.tsx"],
+  "exclude": ["**/node_modules", "**/Pods"]
+}
