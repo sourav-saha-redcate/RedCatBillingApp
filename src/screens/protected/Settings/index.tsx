@@ -453,7 +453,7 @@ const Settings: React.FC = () => {
     if (typeof window !== 'undefined' && window.history) {
       try {
         window.history.replaceState(null, '', '/');
-      } catch (_) {}
+      } catch (_) { }
     }
     navigation.reset({
       index: 0,
@@ -705,8 +705,8 @@ const Settings: React.FC = () => {
                     serverHealth === 'healthy'
                       ? '#DCFCE7'
                       : serverHealth === 'offline'
-                      ? '#FEE2E2'
-                      : '#F1F5F9',
+                        ? '#FEE2E2'
+                        : '#F1F5F9',
                 },
               ]}>
               <Text
@@ -717,8 +717,8 @@ const Settings: React.FC = () => {
                       serverHealth === 'healthy'
                         ? '#16A34A'
                         : serverHealth === 'offline'
-                        ? '#EF4444'
-                        : '#64748B',
+                          ? '#EF4444'
+                          : '#64748B',
                   },
                 ]}>
                 ● {serverHealth === 'healthy' ? 'Operational' : serverHealth === 'offline' ? 'Offline' : 'Checking'}
@@ -790,7 +790,7 @@ const Settings: React.FC = () => {
         </View>
 
         {/* 5. APP SETTINGS */}
-        <Text style={styles.sectionHeader}>APP SETTINGS</Text>
+        {/* <Text style={styles.sectionHeader}>APP SETTINGS</Text>
         <View style={styles.card}>
 
           <TouchableOpacity
@@ -828,7 +828,7 @@ const Settings: React.FC = () => {
               thumbColor={darkMode ? '#FFFFFF' : '#FFFFFF'}
             />
           </View>
-        </View>
+        </View> */}
 
         {/* 5. LOGOUT */}
         <TouchableOpacity
