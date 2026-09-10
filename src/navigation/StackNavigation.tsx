@@ -1,21 +1,33 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import {
-  DefaultTheme,
   NavigationContainer,
-  Theme,
+  useNavigation,
 } from '@react-navigation/native';
 import {
   createStackNavigator,
   StackScreenProps,
 } from '@react-navigation/stack';
-import { navigationRef } from './RootNaivgation';
+import {
+  navigationRef,
+  reset,
+  isProtectedRoute,
+  checkIsAuthenticated,
+} from './RootNaivgation';
 import { RootStackParamList } from '@app/types';
+import { useAppSelector } from '@app/store';
+
+// Public Screens
 import Splash from '@app/screens/public/auth/Splash';
 import GetStarted from '@app/screens/public/auth/GetStarted';
 import SignIn from '@app/screens/public/auth/SignIn';
 import SignUp from '@app/screens/public/auth/SignUp';
 import ChooseStoreType from '@app/screens/public/auth/ChooseStoreType';
 import StoreSetup from '@app/screens/public/auth/StoreSetup';
+import ForgotPassword from '@app/screens/public/auth/ForgotPassword';
+import OtpVerification from '@app/screens/public/auth/OtpVerification';
+import ResetPassword from '@app/screens/public/auth/ResetPassword';
+
+// Protected Screens
 import TabNavigator from './TabNavigation';
 import Home from '@app/screens/protected/Home';
 import Gallery from '@app/screens/protected/Gallery';
@@ -31,68 +43,124 @@ import DailySummary from '@app/screens/protected/DailySummary';
 
 const Stack = createStackNavigator<RootStackParamList>();
 
-export default function StackNavigation() {
-  const [isLoading, setIsLoading] = useState(true);
-  // const isToken = useAppSelector(state => state.auth.token);
-  // const isInstalled = useAppSelector(state => state.auth.isInstalled);
-  // const { onBoardingProgress, isProfileComplete } = useAppSelector<any>(
-  //   state => state.auth,
-  // );
-  // const dispatch = useAppDispatch();
+/**
+ * Route guard Higher-Order Component.
+ * Ensures that even if a protected screen is directly mounted or accessed,
+ * unauthenticated users are immediately blocked and redirected to the Login page.
+ */
+export function withAuthGuard<P extends object>(
+  WrappedComponent: React.ComponentType<P>,
+): React.FC<P> {
+  return function GuardedComponent(props: P) {
+    const token = useAppSelector(
+      state => state.auth.accessToken || state.auth.token,
+    );
+    const navigation = useNavigation<any>();
 
-  const AuthScreens = {
+    useEffect(() => {
+      if (!token) {
+        if (navigation?.reset) {
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'SignIn' }],
+          });
+        } else {
+          reset(0, 'SignIn');
+        }
+      }
+    }, [token, navigation]);
+
+    if (!token) {
+      return null;
+    }
+
+    return <WrappedComponent {...props} />;
+  };
+}
+
+export default function StackNavigation() {
+  const token = useAppSelector(
+    state => state.auth.accessToken || state.auth.token,
+  );
+  const isAuthenticated = Boolean(token);
+
+  const ProtectedScreens: Record<string, React.ComponentType<any>> = {
+    TabNavigator: withAuthGuard(TabNavigator),
+    SideMenu: withAuthGuard(SideMenu),
+    BillHistory: withAuthGuard(BillHistory),
+    BillPreview: withAuthGuard(BillPreview),
+    NewBill: withAuthGuard(NewBill),
+    Settings: withAuthGuard(Settings),
+    DailySummary: withAuthGuard(DailySummary),
+    SearchProduct: withAuthGuard(SearchProduct),
+    PrimerProduct: withAuthGuard(PrimerProduct),
+    CollorCatalogue: withAuthGuard(CollorCatalogue),
+    Home: withAuthGuard(Home),
+    Gallery: withAuthGuard(Gallery),
+  };
+
+  const PublicScreens: Record<string, React.ComponentType<any>> = {
+    SignIn: SignIn,
     Splash: Splash,
     GetStarted: GetStarted,
-    SignIn: SignIn,
     SignUp: SignUp,
     ChooseStoreType: ChooseStoreType,
     RegisterStore: ChooseStoreType,
     StoreSetup: StoreSetup,
-    TabNavigator: TabNavigator,
-    SideMenu: SideMenu,
-    BillHistory: BillHistory,
-    BillPreview: BillPreview,
-    NewBill: NewBill,
-    Settings: Settings,
-    DailySummary: DailySummary,
-    // Home:Home,
-    // Gallery:Gallery,
-    // SearchProduct:SearchProduct,
-    // PrimerProduct:PrimerProduct,
-    // CollorCatalogue:CollorCatalogue,
+    ForgotPassword: ForgotPassword,
+    OtpVerification: OtpVerification,
+    ResetPassword: ResetPassword,
+    ChangePassword: ResetPassword,
   };
 
-  const MainScreens = {};
-
-  // useEffect(() => {
-  //   const timer = setTimeout(() => {
-  //     setIsLoading(false); // End splash after 1.5 seconds
-  //   }, 1500);
-
-  //   return () => clearTimeout(timer);
-  // }, []);
-
-  // if (isLoading) {
-  //   return <Splash navigation={undefined} />;
-  // }
-
-  const Screens = AuthScreens;
-
   return (
-    <NavigationContainer ref={navigationRef}>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
-        {Object.entries(Screens).map(([name, component], index) => (
-          <Stack.Screen
-            key={index}
-            name={name as keyof RootStackParamList} // Casting the name to RootStackParamList keys
-            component={
-              component as React.ComponentType<
-                StackScreenProps<RootStackParamList>
-              >
-            }
-            options={{ gestureEnabled: false }}
-          />
-        ))}
+    <NavigationContainer
+      ref={navigationRef}
+      onStateChange={() => {
+        if (!navigationRef.isReady()) return;
+        const currentRoute = navigationRef.getCurrentRoute();
+        if (
+          currentRoute &&
+          isProtectedRoute(currentRoute.name) &&
+          !checkIsAuthenticated()
+        ) {
+          reset(0, 'SignIn');
+        }
+      }}>
+      <Stack.Navigator
+        initialRouteName={isAuthenticated ? 'TabNavigator' : 'SignIn'}
+        screenOptions={{ headerShown: false, gestureEnabled: false }}>
+        {isAuthenticated ? (
+          <Stack.Group>
+            {Object.entries(ProtectedScreens).map(([name, component]) => (
+              <Stack.Screen
+                key={name}
+                name={name as keyof RootStackParamList}
+                component={
+                  component as React.ComponentType<
+                    StackScreenProps<RootStackParamList>
+                  >
+                }
+                options={{ gestureEnabled: false }}
+              />
+            ))}
+          </Stack.Group>
+        ) : (
+          <Stack.Group>
+            {Object.entries(PublicScreens).map(([name, component]) => (
+              <Stack.Screen
+                key={name}
+                name={name as keyof RootStackParamList}
+                component={
+                  component as React.ComponentType<
+                    StackScreenProps<RootStackParamList>
+                  >
+                }
+                options={{ gestureEnabled: false }}
+              />
+            ))}
+          </Stack.Group>
+        )}
       </Stack.Navigator>
     </NavigationContainer>
   );

@@ -369,6 +369,131 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+
+  // State Handling Styles
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: normalize(24),
+  },
+
+  loadingText: {
+    marginTop: normalize(12),
+    fontSize: normalize(14),
+    fontFamily: Fonts.Figtree_Medium,
+    color: '#64748B',
+  },
+
+  errorBanner: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+    borderRadius: normalize(8),
+    padding: normalize(14),
+    marginHorizontal: normalize(16),
+    marginTop: normalize(16),
+    alignItems: 'center',
+  },
+
+  errorText: {
+    fontSize: normalize(13),
+    color: '#B91C1C',
+    fontFamily: Fonts.Figtree_Medium,
+    textAlign: 'center',
+    marginBottom: normalize(10),
+  },
+
+  retryButton: {
+    backgroundColor: '#0A1E4A',
+    paddingHorizontal: normalize(16),
+    paddingVertical: normalize(8),
+    borderRadius: normalize(6),
+  },
+
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: normalize(12),
+    fontFamily: Fonts.Figtree_Bold,
+    fontWeight: '700',
+  },
+
+  // Detailed Receipt Breakdown Styles
+  receiptBadge: {
+    alignSelf: 'center',
+    paddingHorizontal: normalize(8),
+    paddingVertical: normalize(2),
+    borderRadius: normalize(4),
+    marginBottom: normalize(6),
+  },
+
+  receiptBadgeText: {
+    fontFamily: monoFont,
+    fontSize: normalize(10),
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+
+  itemDetailText: {
+    fontFamily: monoFont,
+    fontSize: normalize(9.5),
+    color: '#64748B',
+    marginTop: normalize(1),
+  },
+
+  itemDiscountText: {
+    fontFamily: monoFont,
+    fontSize: normalize(9.5),
+    color: '#16A34A',
+    fontWeight: '600',
+  },
+
+  taxRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingLeft: normalize(8),
+  },
+
+  taxRowLabel: {
+    fontFamily: monoFont,
+    fontSize: normalize(11),
+    color: '#64748B',
+  },
+
+  taxRowValue: {
+    fontFamily: monoFont,
+    fontSize: normalize(11),
+    color: '#475569',
+  },
+
+  paymentBox: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: normalize(6),
+    padding: normalize(8),
+    marginTop: normalize(8),
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+
+  paymentRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+
+  paymentLabel: {
+    fontFamily: monoFont,
+    fontSize: normalize(11),
+    color: '#475569',
+  },
+
+  paymentVal: {
+    fontFamily: monoFont,
+    fontSize: normalize(11),
+    fontWeight: '700',
+    color: '#0F172A',
+  },
 });
 
 export default styles;

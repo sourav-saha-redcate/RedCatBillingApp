@@ -1,11 +1,21 @@
 import { all } from 'redux-saga/effects';
-import authSaga from './auth.saga';
+import authSaga, {
+  watchLogin,
+  watchRefreshToken,
+  watchRegisterStore,
+  watchGetMe,
+  watchForgotPassword,
+} from './auth.saga';
 import userSaga from './user.saga';
 
 export default function* rootSaga() {
   yield all([
     authSaga(),
     userSaga(),
-    // Add other sagas here
+    watchLogin(),
+    watchRefreshToken(),
+    watchRegisterStore(),
+    watchGetMe(),
+    watchForgotPassword(),
   ]);
-}
+}

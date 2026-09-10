@@ -1,7 +1,7 @@
 import {
   View,
   Text,
-  SafeAreaView,
+
   FlatList,
   Image,
   TouchableOpacity,
@@ -14,6 +14,7 @@ import Icons from '../../themes/Icons';
 import { useNavigation } from '@react-navigation/native';
 import { normalize } from '@app/utils/orientation';
 import { Colors, Fonts, Images } from '@app/themes';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export type DrawerItem = {
   id: string;

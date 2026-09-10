@@ -15,11 +15,16 @@ import { showMessage } from '@app/utils/helpers/Toast';
 import {
   DEFAULT_STORE_INFO,
   formatBillForWhatsApp,
+  formatWhatsAppFriendlyMessage,
+  sendBillViaWhatsAppWithPdf,
   sendBillViaWhatsApp,
   shareBillGeneral,
+  shareBillPdfGeneral,
 } from '@app/utils/share/BillShareService';
 import printerService, { ConnectionStatus } from '@app/utils/printer/PrinterService';
 import { StorePrintInfo, buildBillHtml } from '@app/utils/printer/EscPosBuilder';
+
+import { sendReceiptApi } from '@app/services/billing.service';
 
 interface SharePrintChoiceModalProps {
   visible: boolean;
@@ -58,7 +63,7 @@ export const SharePrintChoiceModal: React.FC<SharePrintChoiceModalProps> = ({
     }
   };
 
-  const formattedMessage = formatBillForWhatsApp(bill, storeInfo);
+  const friendlyMessage = formatWhatsAppFriendlyMessage(bill, storeInfo);
 
   const handleSendWhatsApp = async () => {
     if (!phoneNumber.trim()) {
@@ -68,7 +73,10 @@ export const SharePrintChoiceModal: React.FC<SharePrintChoiceModalProps> = ({
 
     setIsSendingWhatsApp(true);
     try {
-      await sendBillViaWhatsApp(phoneNumber.trim(), formattedMessage);
+      if (bill.id && !bill.id.startsWith('item-')) {
+        sendReceiptApi(bill.id, { channel: 'whatsapp', recipient: phoneNumber.trim() }).catch(() => {});
+      }
+      await sendBillViaWhatsAppWithPdf(bill, phoneNumber.trim(), storeInfo);
       showMessage(`Opening WhatsApp for ${phoneNumber.trim()}...`);
       onClose();
     } catch (err: any) {
@@ -97,7 +105,7 @@ export const SharePrintChoiceModal: React.FC<SharePrintChoiceModalProps> = ({
 
   const handleGeneralShare = async () => {
     try {
-      await shareBillGeneral(bill, storeInfo);
+      await shareBillPdfGeneral(bill, storeInfo);
       onClose();
     } catch {
       showMessage('Could not share bill');
@@ -146,10 +154,10 @@ export const SharePrintChoiceModal: React.FC<SharePrintChoiceModalProps> = ({
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.optionTitleWhatsApp}>
-                        Send via WhatsApp
+                        Send Bill via WhatsApp (PDF)
                       </Text>
                       <Text style={styles.optionDesc}>
-                        Instant itemized digital receipt to customer's WhatsApp
+                        Attaches PDF invoice with Google review rating link
                       </Text>
                     </View>
                   </View>
@@ -177,7 +185,7 @@ export const SharePrintChoiceModal: React.FC<SharePrintChoiceModalProps> = ({
                       <ActivityIndicator size="small" color="#FFFFFF" />
                     ) : (
                       <Text style={styles.whatsAppButtonText}>
-                        Send Bill to WhatsApp ➔
+                        Attach PDF & Send via WhatsApp ➔
                       </Text>
                     )}
                   </TouchableOpacity>
@@ -193,7 +201,13 @@ export const SharePrintChoiceModal: React.FC<SharePrintChoiceModalProps> = ({
 
                   {showPreview && (
                     <View style={styles.previewBox}>
-                      <Text style={styles.previewText}>{formattedMessage}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                        <Text style={{ fontSize: 13, marginRight: 6 }}>📄</Text>
+                        <Text style={{ fontSize: 11.5, fontWeight: '700', color: '#16A34A' }}>
+                          Bill_{bill.billNumber.replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf attached
+                        </Text>
+                      </View>
+                      <Text style={styles.previewText}>{friendlyMessage}</Text>
                     </View>
                   )}
                 </View>

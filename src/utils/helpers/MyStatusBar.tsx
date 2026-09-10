@@ -2,11 +2,11 @@ import Colors from '@app/themes/Colors';
 import React from 'react';
 import {
   StatusBar,
-  SafeAreaView,
   View,
   StatusBarProps,
   ViewStyle,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const STATUSBAR_HEIGHT = StatusBar.currentHeight;
 

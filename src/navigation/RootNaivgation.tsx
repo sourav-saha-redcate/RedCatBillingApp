@@ -8,25 +8,60 @@ import {RootStackParamList} from '@app/types';
 // Create navigation reference with typed RootStackParamList
 export const navigationRef = createNavigationContainerRef<RootStackParamList>();
 
-// Navigate function with correct typing and format
-export function navigate<RouteName extends keyof RootStackParamList>( // (RootStackParamList & SettingsStackProps)>
+export const PROTECTED_ROUTES: Array<keyof RootStackParamList> = [
+  'TabNavigator',
+  'SideMenu',
+  'BillHistory',
+  'BillPreview',
+  'NewBill',
+  'Settings',
+  'DailySummary',
+  'SearchProduct',
+  'PrimerProduct',
+  'CollorCatalogue',
+  'Home',
+  'Gallery',
+];
+
+export function isProtectedRoute(name: any): boolean {
+  return PROTECTED_ROUTES.includes(name);
+}
+
+export const checkIsAuthenticated = (): boolean => {
+  try {
+    const { store } = require('@app/store');
+    const auth = store.getState()?.auth;
+    return Boolean(auth?.accessToken || auth?.token);
+  } catch {
+    return false;
+  }
+};
+
+// Navigate function with correct typing, format, and route protection
+export function navigate<RouteName extends keyof RootStackParamList>(
   name: RouteName,
-  // params?: (RootStackParamList & SettingsStackProps)[RouteName]
   params?: RootStackParamList[RouteName],
 ) {
   if (navigationRef.isReady()) {
-    // Remove `{ params }` wrapper to match `navigate` method requirements
+    if (isProtectedRoute(name) && !checkIsAuthenticated()) {
+      reset(0, 'SignIn');
+      return;
+    }
     navigationRef.navigate(name as any, params);
   }
 }
 
-// Replace function with correct typing and format
+// Replace function with correct typing, format, and route protection
 export function replace<RouteName extends keyof RootStackParamList>(
   name: RouteName,
   params?: RootStackParamList[RouteName],
 ) {
   if (navigationRef.isReady()) {
-    navigationRef.dispatch(StackActions.replace(name as any, {params})); // Adjust format
+    if (isProtectedRoute(name) && !checkIsAuthenticated()) {
+      reset(0, 'SignIn');
+      return;
+    }
+    navigationRef.dispatch(StackActions.replace(name as any, {params}));
   }
 }
 

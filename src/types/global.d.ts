@@ -1,5 +1,6 @@
 declare global {
   var info: Record<string, any>; // Add the `info` property globally
+  var window: any;
 }
 
 export {};

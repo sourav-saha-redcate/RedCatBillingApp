@@ -1,18 +1,18 @@
 import React from 'react';
 import {
   ActivityIndicator,
-  SafeAreaView,
   Dimensions,
   View,
   StyleSheet,
 } from 'react-native';
 import { Colors } from '@app/themes';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 type LoaderProps = {
   visible?: boolean;
 };
 
-const Loader: React.FC<LoaderProps> = ({visible = false}) => {
+const Loader: React.FC<LoaderProps> = ({ visible = false }) => {
   return visible ? (
     <SafeAreaView style={styles.container}>
       <View style={styles.loaderBox}>

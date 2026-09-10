@@ -1,24 +1,28 @@
 import { View, Text, Image, StyleSheet, useColorScheme } from 'react-native';
 import React, { useEffect } from 'react';
 import { Icons, Images } from '@app/themes';
+import { useAppDispatch, useAppSelector } from '@app/store';
+import { getMeRequest } from '@app/store/slice/auth.slice';
 
 const Splash: React.FC<{ navigation: any }> = ({ navigation }) => {
-  // const AuthReducer = useAppSelector(state => state.auth);
-  // const dispatch = useDispatch();
-  // const storeData = async () => {
-  //   const data = await AsyncStorage.getItem('isInstalled');
-  //   dispatch(checkInstalled(data));
-  // };
-
-  // useEffect(() => {
-  //   storeData();
-  // }, []);
+  const dispatch = useAppDispatch();
+  const { accessToken, token } = useAppSelector(state => state.auth);
+  const activeToken = accessToken || token;
 
   useEffect(() => {
-    setTimeout(() => {
-      navigation.navigate('GetStarted');
-    }, 2000);
-  }, []);
+    const timer = setTimeout(() => {
+      if (activeToken) {
+        console.log('[DEBUG BOOTSTRAP] Active session detected, dispatching GET_ME_REQUEST');
+        dispatch(getMeRequest());
+        navigation.navigate('TabNavigator');
+      } else {
+        console.log('[DEBUG BOOTSTRAP] No active session, navigating to GetStarted');
+        navigation.navigate('GetStarted');
+      }
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, [activeToken, dispatch, navigation]);
 
   return (
     <Image

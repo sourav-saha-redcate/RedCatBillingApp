@@ -1,10 +1,12 @@
-import { BillItem } from '@app/types';
+import { BillItem, StoreSettings } from '@app/types';
 
 export interface StorePrintInfo {
   storeName: string;
   storeAddress?: string;
   storePhone?: string;
   gstin?: string;
+  googleReviewLink?: string;
+  settings?: StoreSettings;
 }
 
 export type PaperSize = '58mm' | '80mm';
@@ -315,54 +317,118 @@ export const buildTestSlipEscPos = (paperSize: PaperSize = '58mm'): string => {
 };
 
 /**
- * Builds an HTML receipt for Android System Print / PDF export
+ * Builds an HTML receipt for Browser Print, Android System Print, and PDF export
  */
-export const buildBillHtml = (bill: BillItem, storeInfo: StorePrintInfo): string => {
-  const itemsHtml = bill.items
-    .map(
-      item => `
+export const buildBillHtml = (
+  bill: BillItem,
+  storeInfo: StorePrintInfo,
+  apiBill?: any
+): string => {
+  const storeName = apiBill?.store?.name || storeInfo.storeName || 'REDCAT BILLING';
+  const storeAddress = apiBill?.store?.address || storeInfo.storeAddress || '';
+  const storePhone = apiBill?.store?.phone || storeInfo.storePhone || '';
+  const gstin = apiBill?.store?.gstin || storeInfo.gstin || '';
+
+  const receiptTitle = apiBill?.receipt_title || 'TAX INVOICE / RECEIPT';
+  const billNo = apiBill?.bill_number || bill.billNumber;
+  const clientBillId = apiBill?.client_bill_id || '';
+  const dateStr = apiBill?.date || bill.date;
+  const timeStr = apiBill?.time || bill.time;
+  const statusStr = (apiBill?.status || bill.status || 'PAID').toUpperCase();
+
+  const customerName = apiBill?.customer?.name || bill.customerName || 'Walk-in Customer';
+  const customerPhone = apiBill?.customer?.phone || bill.phone || '';
+  const staffName = apiBill?.staff?.name || bill.staff || 'Staff';
+
+  const subtotal = apiBill?.subtotal !== undefined ? Number(apiBill.subtotal) : bill.subtotal;
+  const discountVal = apiBill?.discount !== undefined ? Number(apiBill.discount) : 0;
+  const taxableAmount = apiBill?.taxable_amount !== undefined ? Number(apiBill.taxable_amount) : subtotal;
+  const taxTotal = apiBill?.tax !== undefined ? Number(apiBill.tax) : bill.gst;
+  const cgstVal = apiBill?.cgst !== undefined ? Number(apiBill.cgst) : 0;
+  const sgstVal = apiBill?.sgst !== undefined ? Number(apiBill.sgst) : 0;
+  const igstVal = apiBill?.igst !== undefined ? Number(apiBill.igst) : 0;
+  const roundingVal = apiBill?.rounding !== undefined ? Number(apiBill.rounding) : 0;
+  const grandTotal = apiBill?.grand_total !== undefined ? Number(apiBill.grand_total) : bill.grandTotal;
+
+  const paymentMethod = (apiBill?.payment?.method || bill.paymentMethod || 'UPI').toUpperCase();
+  const paymentStatus = (apiBill?.payment?.status || statusStr).toUpperCase();
+  const paymentRef = apiBill?.payment?.reference || '';
+
+  const footerSubnote = apiBill?.receipt_footer_subnote || 'Please retain this receipt for your records.';
+  const invoiceFooterNote = apiBill?.invoice_footer_note || '🙏 Thank you for your visit!';
+  const barcodeValue = apiBill?.barcode || bill.barcode || `rc-${billNo.replace(/[^a-zA-Z0-9]/g, '')}`;
+
+  // Build items rows
+  const items: any[] = apiBill?.items && apiBill.items.length > 0 ? apiBill.items : bill.items;
+  const itemsHtml = items
+    .map((item: any) => {
+      const name = item.name || 'Item';
+      const qty = item.quantity !== undefined ? item.quantity : item.qty;
+      const unitPrice = item.unit_price !== undefined ? Number(item.unit_price) : item.price;
+      const lineTotal = item.total !== undefined ? Number(item.total) : qty * unitPrice;
+      const itemType = item.item_type || item.type;
+      const itemDisc = Number(item.discount || 0);
+      const taxRate = item.tax_rate !== undefined ? `${item.tax_rate}%` : '';
+
+      return `
       <tr>
-        <td style="padding: 6px 0; border-bottom: 1px dashed #e2e8f0; font-weight: 500;">${item.name}</td>
-        <td style="padding: 6px 0; text-align: center; border-bottom: 1px dashed #e2e8f0;">${item.qty}</td>
-        <td style="padding: 6px 0; text-align: right; border-bottom: 1px dashed #e2e8f0; font-weight: 600;">₹${item.price.toFixed(2)}</td>
+        <td style="padding: 6px 0; border-bottom: 1px dashed #e2e8f0; font-weight: 500;">
+          <div>${name}</div>
+          ${itemType || taxRate ? `<div style="font-size: 10px; color: #64748b;">${[itemType, taxRate].filter(Boolean).join(' • ')}</div>` : ''}
+        </td>
+        <td style="padding: 6px 0; text-align: center; border-bottom: 1px dashed #e2e8f0;">${qty}</td>
+        <td style="padding: 6px 0; text-align: right; border-bottom: 1px dashed #e2e8f0;">₹${unitPrice.toFixed(2)}</td>
+        <td style="padding: 6px 0; text-align: right; border-bottom: 1px dashed #e2e8f0; font-weight: 600;">
+          ₹${lineTotal.toFixed(2)}
+          ${itemDisc > 0 ? `<div style="font-size: 10px; color: #16a34a;">-₹${itemDisc.toFixed(2)}</div>` : ''}
+        </td>
       </tr>
-    `
-    )
+    `;
+    })
     .join('');
 
   return `
     <!DOCTYPE html>
-    <html>
+    <html lang="en">
       <head>
         <meta charset="utf-8">
-        <title>Receipt ${bill.billNumber}</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>${receiptTitle} - ${billNo}</title>
         <style>
-          @page { size: auto; margin: 12mm 15mm; }
+          @page {
+            size: auto;
+            margin: 8mm 10mm;
+          }
           body {
-            font-family: 'Helvetica Neue', Arial, sans-serif;
-            color: #1e293b;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            color: #0f172a;
             margin: 0;
-            padding: 10px;
-            font-size: 13px;
-            line-height: 1.4;
+            padding: 12px;
+            font-size: 12.5px;
+            line-height: 1.45;
+            background-color: #f8fafc;
           }
           .receipt-box {
-            max-width: 380px;
+            max-width: 420px;
             margin: 0 auto;
+            background: #ffffff;
             border: 1px solid #cbd5e1;
             border-radius: 8px;
-            padding: 18px;
+            padding: 20px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
           }
           .header { text-align: center; margin-bottom: 12px; }
-          .store-name { font-size: 20px; font-weight: 800; color: #0f172a; margin: 0; }
+          .receipt-title { font-size: 12px; font-weight: 700; letter-spacing: 1px; color: #475569; margin: 0 0 4px 0; text-transform: uppercase; }
+          .store-name { font-size: 20px; font-weight: 800; color: #0f172a; margin: 0 0 4px 0; }
           .store-info { font-size: 11px; color: #64748b; margin: 2px 0; }
           .divider { border-top: 1px dashed #94a3b8; margin: 12px 0; }
-          .meta-grid { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px; }
+          .meta-grid { display: flex; justify-content: space-between; font-size: 11.5px; margin-bottom: 4px; }
           .meta-label { color: #64748b; }
           .meta-val { font-weight: 600; color: #0f172a; }
           table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-          th { text-align: left; font-size: 11px; color: #64748b; text-transform: uppercase; border-bottom: 1px solid #cbd5e1; padding-bottom: 4px; }
+          th { text-align: left; font-size: 10.5px; color: #64748b; text-transform: uppercase; border-bottom: 1px solid #cbd5e1; padding-bottom: 4px; }
           .total-row { display: flex; justify-content: space-between; margin-top: 5px; font-size: 12px; }
+          .total-row.tax-detail { font-size: 11px; color: #64748b; }
           .grand-total {
             display: flex;
             justify-content: space-between;
@@ -373,31 +439,67 @@ export const buildBillHtml = (bill: BillItem, storeInfo: StorePrintInfo): string
             font-weight: 800;
             color: #0f172a;
           }
+          .payment-badge {
+            background-color: #f1f5f9;
+            padding: 8px 12px;
+            border-radius: 6px;
+            margin-top: 12px;
+            font-size: 11.5px;
+          }
           .footer { text-align: center; margin-top: 18px; font-size: 11px; color: #64748b; }
+          .barcode-container { text-align: center; margin-top: 14px; }
+          .barcode-val { font-family: monospace; font-size: 11px; color: #475569; letter-spacing: 2px; }
+
+          /* Print-specific CSS: Hide application navigation, show only clean bill */
+          @media print {
+            nav, header, footer, .no-print, .action-buttons, button {
+              display: none !important;
+            }
+            body {
+              margin: 0 !important;
+              padding: 0 !important;
+              background: #ffffff !important;
+              color: #000000 !important;
+            }
+            .receipt-box {
+              border: none !important;
+              box-shadow: none !important;
+              width: 100% !important;
+              max-width: 100% !important;
+              margin: 0 auto !important;
+              padding: 0 !important;
+            }
+          }
         </style>
       </head>
       <body>
         <div class="receipt-box">
           <div class="header">
-            <h1 class="store-name">${storeInfo.storeName || 'REDCAT BILLING'}</h1>
-            ${storeInfo.storeAddress ? `<p class="store-info">${storeInfo.storeAddress}</p>` : ''}
-            ${storeInfo.storePhone ? `<p class="store-info">Phone: ${storeInfo.storePhone}</p>` : ''}
-            ${storeInfo.gstin ? `<p class="store-info">GSTIN: ${storeInfo.gstin}</p>` : ''}
+            <div class="receipt-title">${receiptTitle}</div>
+            <h1 class="store-name">${storeName}</h1>
+            ${storeAddress ? `<p class="store-info">${storeAddress}</p>` : ''}
+            ${storePhone ? `<p class="store-info">Phone: ${storePhone}</p>` : ''}
+            ${gstin ? `<p class="store-info">GSTIN: ${gstin}</p>` : ''}
           </div>
 
           <div class="divider"></div>
 
           <div class="meta-grid">
-            <div><span class="meta-label">Bill No:</span> <span class="meta-val">${bill.billNumber}</span></div>
-            <div><span class="meta-label">Date:</span> <span class="meta-val">${bill.date}</span></div>
+            <div><span class="meta-label">Bill No:</span> <span class="meta-val">${billNo}</span></div>
+            <div><span class="meta-label">Date:</span> <span class="meta-val">${dateStr}</span></div>
+          </div>
+          ${clientBillId ? `
+          <div class="meta-grid">
+            <div><span class="meta-label">Ref ID:</span> <span class="meta-val">${clientBillId}</span></div>
+            <div><span class="meta-label">Status:</span> <span class="meta-val">${statusStr}</span></div>
+          </div>` : ''}
+          <div class="meta-grid">
+            <div><span class="meta-label">Customer:</span> <span class="meta-val">${customerName}</span></div>
+            <div><span class="meta-label">Time:</span> <span class="meta-val">${timeStr}</span></div>
           </div>
           <div class="meta-grid">
-            <div><span class="meta-label">Customer:</span> <span class="meta-val">${bill.customerName}</span></div>
-            <div><span class="meta-label">Time:</span> <span class="meta-val">${bill.time}</span></div>
-          </div>
-          <div class="meta-grid">
-            <div><span class="meta-label">Payment:</span> <span class="meta-val">${bill.paymentMethod}</span></div>
-            <div><span class="meta-label">Staff:</span> <span class="meta-val">${bill.staff || 'Cashier'}</span></div>
+            <div><span class="meta-label">Phone:</span> <span class="meta-val">${customerPhone || 'Walk-in'}</span></div>
+            <div><span class="meta-label">Staff:</span> <span class="meta-val">${staffName}</span></div>
           </div>
 
           <div class="divider"></div>
@@ -405,9 +507,10 @@ export const buildBillHtml = (bill: BillItem, storeInfo: StorePrintInfo): string
           <table>
             <thead>
               <tr>
-                <th style="width: 55%;">Item</th>
-                <th style="width: 15%; text-align: center;">Qty</th>
-                <th style="width: 30%; text-align: right;">Price</th>
+                <th style="width: 48%;">Item</th>
+                <th style="width: 12%; text-align: center;">Qty</th>
+                <th style="width: 20%; text-align: right;">Rate</th>
+                <th style="width: 20%; text-align: right;">Total</th>
               </tr>
             </thead>
             <tbody>
@@ -419,22 +522,65 @@ export const buildBillHtml = (bill: BillItem, storeInfo: StorePrintInfo): string
 
           <div class="total-row">
             <span>Subtotal:</span>
-            <span>₹${bill.subtotal.toFixed(2)}</span>
+            <span>₹${subtotal.toFixed(2)}</span>
           </div>
+          ${discountVal > 0 ? `
+          <div class="total-row" style="color: #16a34a;">
+            <span>Discount Applied:</span>
+            <span>-₹${discountVal.toFixed(2)}</span>
+          </div>` : ''}
+          ${taxableAmount > 0 && taxableAmount !== subtotal ? `
           <div class="total-row">
-            <span>GST (5%):</span>
-            <span>₹${bill.gst.toFixed(2)}</span>
+            <span>Taxable Amount:</span>
+            <span>₹${taxableAmount.toFixed(2)}</span>
+          </div>` : ''}
+          ${cgstVal > 0 ? `
+          <div class="total-row tax-detail">
+            <span>CGST:</span>
+            <span>₹${cgstVal.toFixed(2)}</span>
+          </div>` : ''}
+          ${sgstVal > 0 ? `
+          <div class="total-row tax-detail">
+            <span>SGST:</span>
+            <span>₹${sgstVal.toFixed(2)}</span>
+          </div>` : ''}
+          ${igstVal > 0 ? `
+          <div class="total-row tax-detail">
+            <span>IGST:</span>
+            <span>₹${igstVal.toFixed(2)}</span>
+          </div>` : ''}
+          <div class="total-row">
+            <span>Total Tax:</span>
+            <span>₹${taxTotal.toFixed(2)}</span>
           </div>
+          ${roundingVal !== 0 ? `
+          <div class="total-row">
+            <span>Rounding:</span>
+            <span>₹${roundingVal.toFixed(2)}</span>
+          </div>` : ''}
 
           <div class="grand-total">
             <span>Grand Total:</span>
-            <span>₹${bill.grandTotal.toFixed(2)}</span>
+            <span>₹${grandTotal.toFixed(2)}</span>
+          </div>
+
+          <div class="payment-badge">
+            <div style="display: flex; justify-content: space-between;">
+              <span><strong>Payment Mode:</strong> ${paymentMethod}</span>
+              <span><strong>Status:</strong> ${paymentStatus}</span>
+            </div>
+            ${paymentRef ? `<div style="font-size: 10px; color: #64748b; margin-top: 4px;">Ref: ${paymentRef}</div>` : ''}
           </div>
 
           <div class="footer">
-            <p style="margin: 0; font-weight: 600;">Thank you for shopping with us!</p>
-            <p style="margin: 2px 0;">Please retain this receipt for any exchanges.</p>
+            <p style="margin: 0; font-weight: 600; color: #0f172a;">${invoiceFooterNote}</p>
+            <p style="margin: 3px 0;">${footerSubnote}</p>
           </div>
+
+          ${barcodeValue ? `
+          <div class="barcode-container">
+            <div class="barcode-val">${barcodeValue}</div>
+          </div>` : ''}
         </div>
       </body>
     </html>

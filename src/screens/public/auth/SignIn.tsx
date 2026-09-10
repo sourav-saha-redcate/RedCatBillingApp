@@ -1,5 +1,8 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
+  BackHandler,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -9,12 +12,22 @@ import {
   TouchableOpacity,
   View,
   Image,
-  SafeAreaView,
 } from 'react-native';
 import { normalize } from '@app/utils/orientation';
 import CustomModal from '@app/components/common/CustomModal';
 import { Colors, Fonts, Icons, Images } from '@app/themes';
 import { showMessage } from '@app/utils/helpers/Toast';
+import { useAppDispatch, useAppSelector } from '@app/store';
+import {
+  loginRequest,
+  forgotPasswordRequest,
+  resetForgotPasswordFlow,
+} from '@app/store/slice/auth.slice';
+import {
+  verifyResetOtpApi,
+  resetPasswordApi,
+} from '@app/services/auth.service';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 interface SignInProps {
   email: string;
@@ -26,16 +39,31 @@ interface ChangeProps {
   conPass: string;
 }
 
-const SignIn: React.FC<{ navigation: any }> = ({ navigation }) => {
-  const [remember, setRemember] = useState(false);
+interface SignInComponentProps {
+  navigation: any;
+}
+
+const SignIn: React.FC<SignInComponentProps> = ({ navigation }) => {
+  const dispatch = useAppDispatch();
+  const {
+    loading,
+    accessToken,
+    forgotPasswordLoading,
+    forgotPasswordSuccess,
+  } = useAppSelector(state => state.auth);
+
+  const [remember, setRemember] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [otpmodalVisible, setOtpModalVisible] = useState(false);
   const [resetmodalVisible, setResetModalVisible] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [enteredOtp, setEnteredOtp] = useState('');
 
   const [info, setInfo] = useState<SignInProps>({
-    email: '',
-    password: '',
+    email: '+919876543210',
+    password: 'SecurePass123!',
   });
 
   const [forgot, setForgot] = useState('');
@@ -44,8 +72,70 @@ const SignIn: React.FC<{ navigation: any }> = ({ navigation }) => {
     conPass: '',
   });
 
-  const [otpDigits, setOtpDigits] = useState(['', '', '', '']);
-  const inputRefs = useRef<Array<any>>([]);
+  const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
+  const otpRefs = useRef<Array<any>>([]);
+  const isAwaitingOtp = useRef(false);
+  const forgotScrollRef = useRef<any>(null);
+  const otpScrollRef = useRef<any>(null);
+  const resetScrollRef = useRef<any>(null);
+
+  // Trap back navigation so user cannot access protected pages using Back button
+  useEffect(() => {
+    const onBackPress = () => {
+      if (!navigation.canGoBack()) {
+        BackHandler.exitApp();
+        return true;
+      }
+      return false;
+    };
+
+    const subscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      onBackPress,
+    );
+
+    return () => subscription.remove();
+  }, [navigation]);
+
+  // Trap browser Back button in web environments
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.history) {
+      try {
+        window.history.pushState(null, '', window.location?.href || '/');
+        const onPopState = () => {
+          window.history.pushState(null, '', window.location?.href || '/');
+        };
+        window.addEventListener('popstate', onPopState);
+        return () => window.removeEventListener('popstate', onPopState);
+      } catch {
+        // Ignore errors in non-browser environments
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (accessToken) {
+      if (navigation?.reset) {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'TabNavigator' }],
+        });
+      } else {
+        navigation.navigate('TabNavigator');
+      }
+    }
+  }, [accessToken, navigation]);
+
+  useEffect(() => {
+    if (forgotPasswordSuccess && modalVisible && isAwaitingOtp.current) {
+      isAwaitingOtp.current = false;
+      Keyboard.dismiss();
+      setModalVisible(false);
+      setTimeout(() => {
+        setOtpModalVisible(true);
+      }, 350);
+    }
+  }, [forgotPasswordSuccess, modalVisible]);
 
   const updateValue = (field: keyof SignInProps, value: string) => {
     setInfo(prev => ({ ...prev, [field]: value }));
@@ -64,83 +154,198 @@ const SignIn: React.FC<{ navigation: any }> = ({ navigation }) => {
       showMessage('Please enter your password');
       return;
     }
-    navigation.navigate('TabNavigator');
+
+    console.log('[DEBUG UI] Action dispatch -> LOGIN_REQUEST', {
+      username: info.email.trim(),
+      remember_me: remember,
+    });
+
+    dispatch(
+      loginRequest({
+        username: info.email.trim(),
+        password: info.password,
+        remember_me: remember,
+      }),
+    );
   };
 
   const handleForgotNext = () => {
     if (!forgot.trim()) {
-      showMessage('Please enter your email address');
+      showMessage('Please enter your email or phone number');
       return;
     }
-    setModalVisible(false);
-    setTimeout(() => {
-      setOtpModalVisible(true);
-    }, 350);
+    isAwaitingOtp.current = true;
+    Keyboard.dismiss();
+    console.log('[DEBUG UI] Action dispatch -> FORGOT_PASSWORD_REQUEST', {
+      identifier: forgot.trim(),
+    });
+    dispatch(forgotPasswordRequest({ identifier: forgot.trim() }));
   };
 
-  const handleOtpNext = () => {
-    if (otpDigits.some(d => !d)) {
-      showMessage('Please enter the 4-digit verification code');
+  const handleOtpNext = async () => {
+    const code = otpDigits.join('').trim();
+    if (!code) {
+      showMessage('Please enter the verification code');
       return;
     }
-    setOtpModalVisible(false);
-    setTimeout(() => {
-      setResetModalVisible(true);
+    if (code.length < 6) {
+      showMessage('Please enter the complete 6-digit verification code');
+      return;
+    }
+    if (otpLoading) return;
+
+    try {
+      setOtpLoading(true);
+      Keyboard.dismiss();
+      const res = await verifyResetOtpApi({
+        identifier: forgot.trim(),
+        otp: code,
+      });
+
+      const resData = (res.data as any)?.data || res.data;
+      const tokenOrOtp =
+        resData?.token ||
+        resData?.reset_token ||
+        resData?.resetToken ||
+        (res.data as any)?.token ||
+        (res.data as any)?.reset_token ||
+        code;
+
+      setEnteredOtp(tokenOrOtp);
+      const msg = res.data?.message || 'OTP verified successfully';
+      showMessage(msg);
+      Keyboard.dismiss();
+      setOtpModalVisible(false);
       resetOtpDigits();
-    }, 350);
+
+      if (navigation?.navigate) {
+        navigation.navigate('ResetPassword', {
+          identifier: forgot.trim(),
+          token_or_otp: tokenOrOtp,
+          tokenOrOtp: tokenOrOtp,
+        });
+      } else {
+        setTimeout(() => {
+          setResetModalVisible(true);
+        }, 350);
+      }
+    } catch (error: any) {
+      console.log(
+        '[DEBUG OTP VERIFY] Error:',
+        error?.response?.data || error?.message,
+      );
+      const errorMessage =
+        error?.response?.data?.message ||
+        (Array.isArray(error?.response?.data?.errors)
+          ? error.response.data.errors.join(', ')
+          : error?.message ||
+            'Verification failed. Please check the code and try again.');
+      showMessage(errorMessage);
+    } finally {
+      setOtpLoading(false);
+    }
   };
 
-  const handleResetSubmit = () => {
+  const handleResetSubmit = async () => {
     if (!change.password) {
-      showMessage('Please enter your new password');
+      showMessage('New password is required');
       return;
     }
     if (change.password.length < 6) {
-      showMessage('Password must be at least 6 characters');
+      showMessage('Password must be at least 6 characters long');
+      return;
+    }
+    if (!change.conPass) {
+      showMessage('Confirm password is required');
       return;
     }
     if (change.password !== change.conPass) {
       showMessage('Passwords do not match');
       return;
     }
-    setResetModalVisible(false);
-    setChange({ password: '', conPass: '' });
-    setForgot('');
-    showMessage('Password changed successfully');
+    try {
+      setResetLoading(true);
+      const res = await resetPasswordApi({
+        identifier: forgot.trim(),
+        token_or_otp: enteredOtp,
+        new_password: change.password,
+      });
+      const msg = res.data?.message || 'Password reset successfully.';
+      showMessage(msg);
+      dispatch(resetForgotPasswordFlow());
+      Keyboard.dismiss();
+      setResetModalVisible(false);
+      setChange({ password: '', conPass: '' });
+      setForgot('');
+      setEnteredOtp('');
+    } catch (error: any) {
+      const msg = error?.response?.data?.message || error?.message || 'Failed to reset password. Please check your verification code.';
+      showMessage(msg);
+    } finally {
+      setResetLoading(false);
+    }
   };
 
   const handleOtpInputChange = (text: string, index: number) => {
-    const value = text.slice(-1);
+    // Strip non-numeric characters
+    const cleaned = text.replace(/[^0-9]/g, '');
+
+    // Support pasting up to 6 digits
+    if (cleaned.length > 1) {
+      const pasteDigits = cleaned.slice(0, 6).split('');
+      const next = [...otpDigits];
+      const startIdx = pasteDigits.length === 6 ? 0 : index;
+      for (let i = 0; i < pasteDigits.length && startIdx + i < 6; i++) {
+        next[startIdx + i] = pasteDigits[i];
+      }
+      setOtpDigits(next);
+      const targetFocus = Math.min(startIdx + pasteDigits.length, 5);
+      otpRefs.current[targetFocus]?.focus();
+      return;
+    }
+
+    // Single digit input
+    const value = cleaned.slice(-1);
     const next = [...otpDigits];
     next[index] = value;
     setOtpDigits(next);
 
-    if (value && index < 3) {
-      inputRefs.current[index + 1]?.focus();
-    } else if (!value && index > 0) {
-      inputRefs.current[index - 1]?.focus();
+    // Automatically focus next input
+    if (value && index < 5) {
+      otpRefs.current[index + 1]?.focus();
     }
   };
 
-  const resetOtpDigits = () => setOtpDigits(['', '', '', '']);
+  const handleOtpKeyPress = (e: any, index: number) => {
+    if (e.nativeEvent.key === 'Backspace') {
+      if (!otpDigits[index] && index > 0) {
+        otpRefs.current[index - 1]?.focus();
+      }
+    }
+  };
+
+  const resetOtpDigits = () => setOtpDigits(['', '', '', '', '', '']);
 
   const renderOtpInputs = () =>
     otpDigits.map((digit, index) => (
       <TextInput
         key={index}
         ref={el => {
-          inputRefs.current[index] = el;
+          otpRefs.current[index] = el;
         }}
         value={digit}
         onChangeText={text => handleOtpInputChange(text, index)}
-        onKeyPress={({ nativeEvent }) => {
-          if (nativeEvent.key === 'Backspace' && !digit && index > 0) {
-            inputRefs.current[index - 1]?.focus();
-          }
+        onKeyPress={e => handleOtpKeyPress(e, index)}
+        onFocus={() => {
+          setTimeout(() => {
+            otpScrollRef.current?.scrollToEnd?.({ animated: true });
+          }, 100);
         }}
         keyboardType="number-pad"
         maxLength={1}
-        style={styles.otpInput}
+        selectTextOnFocus
+        editable={!otpLoading}
+        style={[styles.otpInput, digit ? styles.otpInputFilled : null]}
         selectionColor="#06489D"
       />
     ));
@@ -255,7 +460,14 @@ const SignIn: React.FC<{ navigation: any }> = ({ navigation }) => {
               </TouchableOpacity>
 
               <TouchableOpacity
-                onPress={() => setModalVisible(true)}
+                onPress={() => {
+                  isAwaitingOtp.current = false;
+                  resetOtpDigits();
+                  dispatch(resetForgotPasswordFlow());
+                  setOtpModalVisible(false);
+                  setResetModalVisible(false);
+                  setModalVisible(true);
+                }}
                 activeOpacity={0.7}>
                 <Text style={styles.forgotText}>Forgot Password?</Text>
               </TouchableOpacity>
@@ -264,10 +476,17 @@ const SignIn: React.FC<{ navigation: any }> = ({ navigation }) => {
             {/* Login Button */}
             <TouchableOpacity
               activeOpacity={0.85}
-              style={styles.loginButton}
+              style={[styles.loginButton, loading && { opacity: 0.7 }]}
+              disabled={loading}
               onPress={handleLogin}>
-              <Text style={styles.loginButtonText}>Login</Text>
-              <Text style={styles.loginArrow}>→</Text>
+              {loading ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <>
+                  <Text style={styles.loginButtonText}>Login</Text>
+                  <Text style={styles.loginArrow}>→</Text>
+                </>
+              )}
             </TouchableOpacity>
           </View>
 
@@ -297,10 +516,16 @@ const SignIn: React.FC<{ navigation: any }> = ({ navigation }) => {
       {/* Forgot password Modal */}
       <CustomModal
         isModalVisible={modalVisible}
-        onBackdropPress={() => setModalVisible(false)}>
+        scrollViewRef={forgotScrollRef}
+        onBackdropPress={() => {
+          Keyboard.dismiss();
+          setModalVisible(false);
+          isAwaitingOtp.current = false;
+          dispatch(resetForgotPasswordFlow());
+        }}>
         <Text style={styles.modalHeading}>Forgot Password</Text>
         <Text style={styles.modalDescription}>
-          Enter your email address to receive a verification code.
+          Enter your registered email address or phone number to receive a verification code.
         </Text>
 
         <View style={styles.modalContent}>
@@ -308,19 +533,32 @@ const SignIn: React.FC<{ navigation: any }> = ({ navigation }) => {
             <TextInput
               value={forgot}
               onChangeText={setForgot}
-              placeholder="Email Address"
+              placeholder="Email or Phone Number"
               placeholderTextColor="#9CA3AF"
-              keyboardType="email-address"
+              keyboardType="default"
               autoCapitalize="none"
               style={styles.modalInput}
+              onFocus={() => {
+                setTimeout(() => {
+                  forgotScrollRef.current?.scrollToEnd?.({ animated: true });
+                }, 100);
+              }}
             />
           </View>
 
           <TouchableOpacity
-            style={styles.modalButton}
+            style={[
+              styles.modalButton,
+              forgotPasswordLoading && { opacity: 0.7 },
+            ]}
+            disabled={forgotPasswordLoading}
             activeOpacity={0.85}
             onPress={handleForgotNext}>
-            <Text style={styles.modalButtonText}>Next</Text>
+            {forgotPasswordLoading ? (
+              <ActivityIndicator size="small" color={Colors.white} />
+            ) : (
+              <Text style={styles.modalButtonText}>Next</Text>
+            )}
           </TouchableOpacity>
         </View>
       </CustomModal>
@@ -328,29 +566,49 @@ const SignIn: React.FC<{ navigation: any }> = ({ navigation }) => {
       {/* OTP Modal */}
       <CustomModal
         isModalVisible={otpmodalVisible}
-        onBackdropPress={() => setOtpModalVisible(false)}>
+        scrollViewRef={otpScrollRef}
+        onBackdropPress={() => {
+          Keyboard.dismiss();
+          setOtpModalVisible(false);
+          resetOtpDigits();
+          isAwaitingOtp.current = false;
+          dispatch(resetForgotPasswordFlow());
+        }}>
         <Text style={styles.modalHeading}>OTP Verification</Text>
         <Text style={styles.modalDescription}>
-          Enter the 4-digit verification code.
+          Enter the 6-digit verification code.
         </Text>
 
         <View style={styles.otpContainer}>{renderOtpInputs()}</View>
 
         <View style={styles.modalContent}>
           <TouchableOpacity
-            style={styles.modalButton}
+            style={[
+              styles.modalButton,
+              otpLoading && { opacity: 0.7 },
+            ]}
+            disabled={otpLoading}
             activeOpacity={0.85}
             onPress={handleOtpNext}>
-            <Text style={styles.modalButtonText}>Next</Text>
+            {otpLoading ? (
+              <ActivityIndicator size="small" color={Colors.white} />
+            ) : (
+              <Text style={styles.modalButtonText}>Verify OTP</Text>
+            )}
           </TouchableOpacity>
 
           <View style={styles.resendRow}>
             <Text style={styles.resendText}>Didn't receive a code? </Text>
             <TouchableOpacity
               activeOpacity={0.7}
+              disabled={otpLoading}
               onPress={() => {
                 resetOtpDigits();
-                showMessage('Verification code resent');
+                if (forgot.trim()) {
+                  dispatch(forgotPasswordRequest({ identifier: forgot.trim() }));
+                } else {
+                  showMessage('Verification code resent');
+                }
               }}>
               <Text style={styles.resendLink}>Resend</Text>
             </TouchableOpacity>
@@ -361,7 +619,13 @@ const SignIn: React.FC<{ navigation: any }> = ({ navigation }) => {
       {/* Change password Modal */}
       <CustomModal
         isModalVisible={resetmodalVisible}
-        onBackdropPress={() => setResetModalVisible(false)}>
+        scrollViewRef={resetScrollRef}
+        onBackdropPress={() => {
+          Keyboard.dismiss();
+          setResetModalVisible(false);
+          isAwaitingOtp.current = false;
+          dispatch(resetForgotPasswordFlow());
+        }}>
         <Text style={styles.modalHeading}>Change Password</Text>
         <Text style={styles.modalDescription}>
           Create a new password for your account.
@@ -376,6 +640,11 @@ const SignIn: React.FC<{ navigation: any }> = ({ navigation }) => {
               placeholderTextColor="#9CA3AF"
               secureTextEntry
               style={styles.modalInput}
+              onFocus={() => {
+                setTimeout(() => {
+                  resetScrollRef.current?.scrollToEnd?.({ animated: true });
+                }, 100);
+              }}
             />
           </View>
 
@@ -387,14 +656,24 @@ const SignIn: React.FC<{ navigation: any }> = ({ navigation }) => {
               placeholderTextColor="#9CA3AF"
               secureTextEntry
               style={styles.modalInput}
+              onFocus={() => {
+                setTimeout(() => {
+                  resetScrollRef.current?.scrollToEnd?.({ animated: true });
+                }, 100);
+              }}
             />
           </View>
 
           <TouchableOpacity
-            style={styles.modalButton}
+            style={[styles.modalButton, resetLoading && { opacity: 0.7 }]}
             activeOpacity={0.85}
+            disabled={resetLoading}
             onPress={handleResetSubmit}>
-            <Text style={styles.modalButtonText}>Submit</Text>
+            {resetLoading ? (
+              <ActivityIndicator color="#FFFFFF" size="small" />
+            ) : (
+              <Text style={styles.modalButtonText}>Submit</Text>
+            )}
           </TouchableOpacity>
         </View>
       </CustomModal>
@@ -779,13 +1058,13 @@ const styles = StyleSheet.create({
   otpContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
-    columnGap: normalize(12),
-    marginHorizontal: normalize(16),
+    columnGap: normalize(8),
+    marginHorizontal: normalize(8),
     marginBottom: normalize(16),
   },
 
   otpInput: {
-    width: normalize(46),
+    width: normalize(40),
     height: normalize(46),
     borderRadius: normalize(8),
     borderWidth: 1.5,
@@ -795,6 +1074,12 @@ const styles = StyleSheet.create({
     fontSize: normalize(18),
     fontFamily: Fonts.DMSans_18pt_Bold,
     color: '#172033',
+    padding: 0,
+  },
+
+  otpInputFilled: {
+    borderColor: '#06489D',
+    backgroundColor: '#F0F7FF',
   },
 
   resendRow: {

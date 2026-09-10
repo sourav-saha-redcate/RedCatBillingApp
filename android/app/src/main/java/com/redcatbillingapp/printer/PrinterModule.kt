@@ -7,7 +7,14 @@ import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothSocket
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.RectF
+import android.graphics.Typeface
+import android.graphics.pdf.PdfDocument
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.wifi.WifiManager
@@ -18,14 +25,18 @@ import android.util.Base64
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
+import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.bridge.UiThreadUtil
 import com.facebook.react.bridge.WritableArray
 import com.facebook.react.bridge.WritableMap
+import java.io.File
+import java.io.FileOutputStream
 import java.io.OutputStream
 import java.net.Inet4Address
 import java.net.InetSocketAddress
@@ -735,6 +746,406 @@ class PrinterModule(reactContext: ReactApplicationContext) : ReactContextBaseJav
             promise.resolve(result)
         } catch (e: Exception) {
             promise.reject("STATUS_ERROR", e.message, e)
+        }
+    }
+
+    private fun getStringSafe(map: ReadableMap?, key: String, defaultVal: String = ""): String {
+        return if (map != null && map.hasKey(key) && !map.isNull(key)) {
+            map.getString(key) ?: defaultVal
+        } else {
+            defaultVal
+        }
+    }
+
+    private fun getDoubleSafe(map: ReadableMap?, key: String, defaultVal: Double = 0.0): Double {
+        return if (map != null && map.hasKey(key) && !map.isNull(key)) {
+            try {
+                map.getDouble(key)
+            } catch (e: Exception) {
+                try {
+                    map.getInt(key).toDouble()
+                } catch (e2: Exception) {
+                    defaultVal
+                }
+            }
+        } else {
+            defaultVal
+        }
+    }
+
+    @ReactMethod
+    fun generateBillPdf(bill: ReadableMap, store: ReadableMap, promise: Promise) {
+        executor.execute {
+            try {
+                val billNumber = getStringSafe(bill, "billNumber", "BILL-001")
+                val customerName = getStringSafe(bill, "customerName", "Valued Customer")
+                val customerPhone = getStringSafe(bill, "phone", "")
+                val date = getStringSafe(bill, "date", "")
+                val time = getStringSafe(bill, "time", "")
+                val paymentMethod = getStringSafe(bill, "paymentMethod", "Cash")
+                val status = getStringSafe(bill, "status", "PAID")
+                val staff = getStringSafe(bill, "staff", "Cashier")
+                val subtotal = getDoubleSafe(bill, "subtotal", 0.0)
+                val gst = getDoubleSafe(bill, "gst", 0.0)
+                val grandTotal = getDoubleSafe(bill, "grandTotal", 0.0)
+
+                val storeName = getStringSafe(store, "storeName", "REDCAT BILLING")
+                val storeAddress = getStringSafe(store, "storeAddress", "")
+                val storePhone = getStringSafe(store, "storePhone", "")
+                val gstin = getStringSafe(store, "gstin", "")
+                val googleReviewLink = getStringSafe(store, "googleReviewLink", "")
+
+                val itemsArray = if (bill.hasKey("items") && !bill.isNull("items")) bill.getArray("items") else null
+                val itemCount = itemsArray?.size() ?: 0
+
+                val pageWidth = 595
+                val estimatedHeight = 360 + (itemCount * 22) + (if (googleReviewLink.trim().isNotEmpty()) 60 else 0)
+                val pageHeight = if (estimatedHeight > 842) estimatedHeight else 842
+
+                val document = PdfDocument()
+                val pageInfo = PdfDocument.PageInfo.Builder(pageWidth, pageHeight, 1).create()
+                val page = document.startPage(pageInfo)
+                val canvas = page.canvas
+
+                // Background
+                val paint = Paint()
+                paint.color = Color.WHITE
+                canvas.drawRect(0f, 0f, pageWidth.toFloat(), pageHeight.toFloat(), paint)
+
+                // Top Accent Bar
+                paint.color = Color.rgb(37, 99, 235) // Blue 600
+                canvas.drawRect(0f, 0f, pageWidth.toFloat(), 6f, paint)
+
+                val textPaint = Paint().apply {
+                    isAntiAlias = true
+                    color = Color.rgb(15, 23, 42) // Slate 900
+                }
+
+                var currentY = 38f
+
+                // Store Name (Header)
+                textPaint.textSize = 20f
+                textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                textPaint.textAlign = Paint.Align.CENTER
+                canvas.drawText(storeName, pageWidth / 2f, currentY, textPaint)
+                currentY += 18f
+
+                // Store address & phone
+                textPaint.textSize = 10f
+                textPaint.typeface = Typeface.DEFAULT
+                textPaint.color = Color.rgb(100, 116, 139) // Slate 500
+                if (storeAddress.isNotEmpty()) {
+                    canvas.drawText(storeAddress, pageWidth / 2f, currentY, textPaint)
+                    currentY += 14f
+                }
+                val contactLine = StringBuilder()
+                if (storePhone.isNotEmpty()) contactLine.append("Tel: ").append(storePhone)
+                if (gstin.isNotEmpty()) {
+                    if (contactLine.isNotEmpty()) contactLine.append("  |  ")
+                    contactLine.append("GSTIN: ").append(gstin)
+                }
+                if (contactLine.isNotEmpty()) {
+                    canvas.drawText(contactLine.toString(), pageWidth / 2f, currentY, textPaint)
+                    currentY += 16f
+                }
+
+                // Divider
+                paint.color = Color.rgb(226, 232, 240) // Slate 200
+                paint.strokeWidth = 1.2f
+                canvas.drawLine(40f, currentY, pageWidth - 40f, currentY, paint)
+                currentY += 20f
+
+                // Metadata Section (Left & Right)
+                // Left Column
+                textPaint.textAlign = Paint.Align.LEFT
+                textPaint.textSize = 11f
+                textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                textPaint.color = Color.rgb(15, 23, 42)
+                canvas.drawText("TAX INVOICE: $billNumber", 45f, currentY, textPaint)
+
+                // Right Column
+                val rightColX = 340f
+                canvas.drawText("BILLED TO", rightColX, currentY, textPaint)
+                currentY += 15f
+
+                textPaint.textSize = 10f
+                textPaint.typeface = Typeface.DEFAULT
+                textPaint.color = Color.rgb(71, 85, 105)
+
+                canvas.drawText("Date: $date $time", 45f, currentY, textPaint)
+                canvas.drawText("Customer: $customerName", rightColX, currentY, textPaint)
+                currentY += 14f
+
+                canvas.drawText("Payment: $paymentMethod ($status)", 45f, currentY, textPaint)
+                if (customerPhone.isNotEmpty()) {
+                    canvas.drawText("Phone: $customerPhone", rightColX, currentY, textPaint)
+                }
+                currentY += 14f
+
+                if (staff.isNotEmpty()) {
+                    canvas.drawText("Cashier / Staff: $staff", 45f, currentY, textPaint)
+                }
+                currentY += 18f
+
+                // Table Header
+                paint.color = Color.rgb(241, 245, 249) // Slate 100
+                val headerBox = RectF(40f, currentY - 12f, pageWidth - 40f, currentY + 14f)
+                canvas.drawRoundRect(headerBox, 4f, 4f, paint)
+
+                textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                textPaint.textSize = 10f
+                textPaint.color = Color.rgb(71, 85, 105)
+                textPaint.textAlign = Paint.Align.LEFT
+                canvas.drawText("ITEM DESCRIPTION", 55f, currentY + 4f, textPaint)
+
+                textPaint.textAlign = Paint.Align.CENTER
+                canvas.drawText("QTY", 340f, currentY + 4f, textPaint)
+
+                textPaint.textAlign = Paint.Align.RIGHT
+                canvas.drawText("RATE", 430f, currentY + 4f, textPaint)
+                canvas.drawText("AMOUNT", pageWidth - 55f, currentY + 4f, textPaint)
+
+                currentY += 26f
+
+                // Table Rows
+                textPaint.typeface = Typeface.DEFAULT
+                textPaint.textSize = 10f
+                textPaint.color = Color.rgb(15, 23, 42)
+
+                for (i in 0 until itemCount) {
+                    val item = itemsArray?.getMap(i) ?: continue
+                    val itemName = getStringSafe(item, "name", "Item")
+                    val itemQty = getDoubleSafe(item, "qty", 1.0)
+                    val itemPrice = getDoubleSafe(item, "price", 0.0)
+                    val itemTotal = itemQty * itemPrice
+
+                    textPaint.textAlign = Paint.Align.LEFT
+                    val maxNameLen = 36
+                    val displayName = if (itemName.length > maxNameLen) itemName.substring(0, maxNameLen) + "..." else itemName
+                    canvas.drawText(displayName, 55f, currentY, textPaint)
+
+                    textPaint.textAlign = Paint.Align.CENTER
+                    val qtyStr = if (itemQty % 1.0 == 0.0) "${itemQty.toInt()}" else String.format(java.util.Locale.US, "%.1f", itemQty)
+                    canvas.drawText(qtyStr, 340f, currentY, textPaint)
+
+                    textPaint.textAlign = Paint.Align.RIGHT
+                    canvas.drawText(String.format(java.util.Locale.US, "₹%.2f", itemPrice), 430f, currentY, textPaint)
+                    canvas.drawText(String.format(java.util.Locale.US, "₹%.2f", itemTotal), pageWidth - 55f, currentY, textPaint)
+
+                    paint.color = Color.rgb(241, 245, 249)
+                    paint.strokeWidth = 1f
+                    canvas.drawLine(45f, currentY + 6f, pageWidth - 45f, currentY + 6f, paint)
+
+                    currentY += 20f
+                }
+
+                currentY += 12f
+
+                // Summary Totals
+                val summaryLabelX = 380f
+                val summaryValX = pageWidth - 55f
+
+                textPaint.textAlign = Paint.Align.RIGHT
+                textPaint.textSize = 10f
+                textPaint.color = Color.rgb(100, 116, 139)
+
+                canvas.drawText("Subtotal:", summaryLabelX, currentY, textPaint)
+                textPaint.color = Color.rgb(15, 23, 42)
+                canvas.drawText(String.format(java.util.Locale.US, "₹%.2f", subtotal), summaryValX, currentY, textPaint)
+                currentY += 16f
+
+                textPaint.color = Color.rgb(100, 116, 139)
+                canvas.drawText("GST (Tax):", summaryLabelX, currentY, textPaint)
+                textPaint.color = Color.rgb(15, 23, 42)
+                canvas.drawText(String.format(java.util.Locale.US, "₹%.2f", gst), summaryValX, currentY, textPaint)
+                currentY += 16f
+
+                // Grand Total Highlight
+                val grandTotalBox = RectF(summaryLabelX - 50f, currentY - 14f, pageWidth - 45f, currentY + 16f)
+                paint.color = Color.rgb(241, 245, 249)
+                canvas.drawRoundRect(grandTotalBox, 4f, 4f, paint)
+
+                textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                textPaint.textSize = 13f
+                textPaint.color = Color.rgb(15, 23, 42)
+                canvas.drawText("Grand Total:", summaryLabelX, currentY + 5f, textPaint)
+                textPaint.color = Color.rgb(37, 99, 235)
+                canvas.drawText(String.format(java.util.Locale.US, "₹%.2f", grandTotal), summaryValX, currentY + 5f, textPaint)
+                currentY += 34f
+
+                // Footer
+                paint.color = Color.rgb(226, 232, 240)
+                paint.strokeWidth = 1.2f
+                canvas.drawLine(40f, currentY, pageWidth - 40f, currentY, paint)
+                currentY += 20f
+
+                textPaint.textAlign = Paint.Align.CENTER
+                textPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                textPaint.textSize = 11f
+                textPaint.color = Color.rgb(15, 23, 42)
+                canvas.drawText("Thank you for visiting $storeName! 🙏", pageWidth / 2f, currentY, textPaint)
+                currentY += 15f
+
+                if (googleReviewLink.trim().isNotEmpty()) {
+                    textPaint.typeface = Typeface.DEFAULT
+                    textPaint.textSize = 9f
+                    textPaint.color = Color.rgb(100, 116, 139)
+                    canvas.drawText("We'd love to hear your feedback. Please rate us on Google:", pageWidth / 2f, currentY, textPaint)
+                    currentY += 13f
+
+                    textPaint.color = Color.rgb(37, 99, 235)
+                    canvas.drawText(googleReviewLink.trim(), pageWidth / 2f, currentY, textPaint)
+                    currentY += 15f
+                }
+
+                textPaint.typeface = Typeface.DEFAULT
+                textPaint.textSize = 9f
+                textPaint.color = Color.rgb(148, 163, 184)
+                canvas.drawText("Thank you for your support!", pageWidth / 2f, currentY, textPaint)
+
+                document.finishPage(page)
+
+                // Save PDF to cache
+                val cleanBillNo = billNumber.replace(Regex("[^a-zA-Z0-9_-]"), "_")
+                val file = File(reactApplicationContext.cacheDir, "Bill_${cleanBillNo}.pdf")
+                val outputStream = FileOutputStream(file)
+                document.writeTo(outputStream)
+                document.close()
+                outputStream.flush()
+                outputStream.close()
+
+                val authority = "${reactApplicationContext.packageName}.fileprovider"
+                val contentUri = FileProvider.getUriForFile(reactApplicationContext, authority, file)
+
+                val result = Arguments.createMap()
+                result.putBoolean("success", true)
+                result.putString("filePath", file.absolutePath)
+                result.putString("uri", contentUri.toString())
+                result.putString("fileName", file.name)
+                promise.resolve(result)
+            } catch (e: Exception) {
+                promise.reject("PDF_GENERATE_ERROR", e.message, e)
+            }
+        }
+    }
+
+    @ReactMethod
+    fun sharePdfToWhatsApp(filePath: String, phone: String, message: String, promise: Promise) {
+        UiThreadUtil.runOnUiThread {
+            try {
+                val file = File(filePath)
+                if (!file.exists()) {
+                    promise.reject("FILE_NOT_FOUND", "PDF file not found at: $filePath")
+                    return@runOnUiThread
+                }
+
+                val authority = "${reactApplicationContext.packageName}.fileprovider"
+                val contentUri = FileProvider.getUriForFile(reactApplicationContext, authority, file)
+
+                val cleanPhone = phone.replace(Regex("[^0-9]"), "")
+                val formattedPhone = if (cleanPhone.length == 10) "91$cleanPhone" else cleanPhone
+
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "application/pdf"
+                    putExtra(Intent.EXTRA_STREAM, contentUri)
+                    if (message.isNotEmpty()) {
+                        putExtra(Intent.EXTRA_TEXT, message)
+                    }
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+
+                // Grant URI permissions explicitly to potential WhatsApp packages
+                reactApplicationContext.grantUriPermission("com.whatsapp", contentUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                reactApplicationContext.grantUriPermission("com.whatsapp.w4b", contentUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+
+                val pm = reactApplicationContext.packageManager
+                val isStandardInstalled = try {
+                    pm.getPackageInfo("com.whatsapp", 0)
+                    true
+                } catch (e: Exception) {
+                    false
+                }
+
+                val isBusinessInstalled = try {
+                    pm.getPackageInfo("com.whatsapp.w4b", 0)
+                    true
+                } catch (e: Exception) {
+                    false
+                }
+
+                val targetPkg = when {
+                    isStandardInstalled -> "com.whatsapp"
+                    isBusinessInstalled -> "com.whatsapp.w4b"
+                    else -> null
+                }
+
+                if (targetPkg != null) {
+                    intent.setPackage(targetPkg)
+                    if (formattedPhone.isNotEmpty()) {
+                        intent.putExtra("jid", "${formattedPhone}@s.whatsapp.net")
+                    }
+                    val currentAct = reactApplicationContext.currentActivity
+                    if (currentAct != null) {
+                        currentAct.startActivity(intent)
+                    } else {
+                        reactApplicationContext.startActivity(intent)
+                    }
+                    promise.resolve(true)
+                } else {
+                    val chooser = Intent.createChooser(intent, "Share Bill via WhatsApp").apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    val currentAct = reactApplicationContext.currentActivity
+                    if (currentAct != null) {
+                        currentAct.startActivity(chooser)
+                    } else {
+                        reactApplicationContext.startActivity(chooser)
+                    }
+                    promise.resolve(true)
+                }
+            } catch (e: Exception) {
+                promise.reject("WHATSAPP_SHARE_ERROR", e.message, e)
+            }
+        }
+    }
+
+    @ReactMethod
+    fun sharePdfGeneral(filePath: String, title: String, message: String, promise: Promise) {
+        UiThreadUtil.runOnUiThread {
+            try {
+                val file = File(filePath)
+                if (!file.exists()) {
+                    promise.reject("FILE_NOT_FOUND", "PDF file not found at: $filePath")
+                    return@runOnUiThread
+                }
+
+                val authority = "${reactApplicationContext.packageName}.fileprovider"
+                val contentUri = FileProvider.getUriForFile(reactApplicationContext, authority, file)
+
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "application/pdf"
+                    putExtra(Intent.EXTRA_STREAM, contentUri)
+                    if (message.isNotEmpty()) {
+                        putExtra(Intent.EXTRA_TEXT, message)
+                    }
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+
+                val chooser = Intent.createChooser(intent, if (title.isNotEmpty()) title else "Share Bill").apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+
+                val currentAct = reactApplicationContext.currentActivity
+                if (currentAct != null) {
+                    currentAct.startActivity(chooser)
+                } else {
+                    reactApplicationContext.startActivity(chooser)
+                }
+                promise.resolve(true)
+            } catch (e: Exception) {
+                promise.reject("GENERAL_SHARE_ERROR", e.message, e)
+            }
         }
     }
 }

@@ -240,6 +240,113 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.Figtree_Regular,
     color: '#64748B',
     textAlign: 'center',
+    marginBottom: normalize(16),
+  },
+
+  emptyStateClearBtn: {
+    paddingHorizontal: normalize(16),
+    paddingVertical: normalize(10),
+    borderRadius: normalize(8),
+    backgroundColor: '#0F172A',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  emptyStateClearBtnText: {
+    fontSize: normalize(13),
+    fontFamily: Fonts.Figtree_SemiBold,
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+
+  activeDateBannerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: normalize(10),
+    marginHorizontal: normalize(18),
+    marginBottom: normalize(12),
+    paddingHorizontal: normalize(14),
+    paddingVertical: normalize(8),
+  },
+
+  activeDateBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+
+  activeDateBannerIcon: {
+    fontSize: normalize(16),
+    marginRight: normalize(8),
+  },
+
+  activeDateTextContainer: {
+    flex: 1,
+  },
+
+  activeDateHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: normalize(2),
+  },
+
+  activeDateBannerTitle: {
+    fontSize: normalize(11),
+    fontFamily: Fonts.Figtree_SemiBold,
+    color: '#64748B',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+
+  activeDateBannerCount: {
+    fontSize: normalize(11),
+    fontFamily: Fonts.Figtree_Regular,
+    color: '#64748B',
+    marginLeft: normalize(4),
+  },
+
+  activeDateBannerText: {
+    fontSize: normalize(12.5),
+    fontFamily: Fonts.Figtree_SemiBold,
+    color: '#0F172A',
+    fontWeight: '700',
+  },
+
+  activeDateBannerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: normalize(10),
+  },
+
+  activeDateChangeBtn: {
+    paddingVertical: normalize(2),
+    paddingHorizontal: normalize(4),
+  },
+
+  activeDateChangeText: {
+    fontSize: normalize(12),
+    fontFamily: Fonts.Figtree_SemiBold,
+    color: '#2563EB',
+    fontWeight: '600',
+  },
+
+  activeDateClearBtn: {
+    width: normalize(22),
+    height: normalize(22),
+    borderRadius: normalize(11),
+    backgroundColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  activeDateClearText: {
+    fontSize: normalize(11),
+    color: '#475569',
+    fontWeight: '800',
   },
 });
 

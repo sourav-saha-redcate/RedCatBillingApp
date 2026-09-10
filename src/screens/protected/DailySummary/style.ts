@@ -541,6 +541,134 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.Figtree_Regular,
     color: '#64748B',
   },
+
+  // Report Type Tabs
+  reportTabsRow: {
+    flexDirection: 'row',
+    paddingHorizontal: normalize(16),
+    paddingVertical: normalize(8),
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+    gap: normalize(8),
+  },
+
+  reportTabBtn: {
+    paddingHorizontal: normalize(14),
+    paddingVertical: normalize(6),
+    borderRadius: normalize(20),
+    backgroundColor: '#F1F5F9',
+  },
+
+  reportTabBtnActive: {
+    backgroundColor: '#06489D',
+  },
+
+  reportTabText: {
+    fontSize: normalize(12),
+    fontFamily: Fonts.Figtree_SemiBold,
+    color: '#64748B',
+    fontWeight: '600',
+  },
+
+  reportTabTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+
+  // GST / Sales / Staff Styles
+  gstCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: normalize(12),
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: normalize(16),
+    marginBottom: normalize(14),
+  },
+
+  gstHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: normalize(12),
+  },
+
+  gstTitle: {
+    fontSize: normalize(15),
+    fontFamily: Fonts.DMSans_18pt_Bold,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+
+  gstBadge: {
+    backgroundColor: '#E0F2FE',
+    paddingHorizontal: normalize(8),
+    paddingVertical: normalize(3),
+    borderRadius: normalize(6),
+  },
+
+  gstBadgeText: {
+    fontSize: normalize(11),
+    fontFamily: Fonts.Figtree_Bold,
+    color: '#0284C7',
+    fontWeight: '700',
+  },
+
+  gstStatRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: normalize(6),
+    borderBottomWidth: 1,
+    borderBottomColor: '#F8FAFC',
+  },
+
+  gstStatLabel: {
+    fontSize: normalize(12.5),
+    fontFamily: Fonts.Figtree_Regular,
+    color: '#64748B',
+  },
+
+  gstStatValue: {
+    fontSize: normalize(13),
+    fontFamily: Fonts.DMSans_18pt_Bold,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+
+  gstTableContainer: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: normalize(8),
+    padding: normalize(10),
+    marginTop: normalize(10),
+  },
+
+  gstTableHeader: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+    paddingBottom: normalize(6),
+    marginBottom: normalize(6),
+  },
+
+  gstTableColHeader: {
+    fontSize: normalize(10.5),
+    fontFamily: Fonts.Figtree_Bold,
+    color: '#475569',
+    fontWeight: '700',
+    textAlign: 'right',
+  },
+
+  gstTableRow: {
+    flexDirection: 'row',
+    paddingVertical: normalize(4),
+  },
+
+  gstTableCell: {
+    fontSize: normalize(11),
+    fontFamily: Fonts.Figtree_Regular,
+    color: '#334155',
+    textAlign: 'right',
+  },
 });
 
 export default styles;

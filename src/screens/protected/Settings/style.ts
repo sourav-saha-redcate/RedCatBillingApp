@@ -418,6 +418,103 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '700',
   },
+
+  // Audit Logs & Backup Styles
+  auditLogCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: normalize(8),
+    padding: normalize(12),
+    marginBottom: normalize(10),
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+
+  auditHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: normalize(4),
+  },
+
+  auditActionBadge: {
+    backgroundColor: '#0F172A',
+    paddingHorizontal: normalize(8),
+    paddingVertical: normalize(2),
+    borderRadius: normalize(4),
+  },
+
+  auditActionText: {
+    fontSize: normalize(10.5),
+    fontFamily: Fonts.Figtree_Bold,
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+
+  auditTimeText: {
+    fontSize: normalize(11),
+    fontFamily: Fonts.Figtree_Regular,
+    color: '#64748B',
+  },
+
+  auditEntityText: {
+    fontSize: normalize(13),
+    fontFamily: Fonts.Figtree_SemiBold,
+    fontWeight: '600',
+    color: '#0F172A',
+    marginTop: normalize(2),
+  },
+
+  auditActorText: {
+    fontSize: normalize(11),
+    fontFamily: Fonts.Figtree_Regular,
+    color: '#475569',
+    marginTop: normalize(2),
+  },
+
+  backupCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F8FAFC',
+    borderRadius: normalize(8),
+    padding: normalize(12),
+    marginBottom: normalize(10),
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+
+  backupInfoCol: {
+    flex: 1,
+    paddingRight: normalize(10),
+  },
+
+  backupFileName: {
+    fontSize: normalize(13),
+    fontFamily: Fonts.DMSans_18pt_Bold,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+
+  backupSubtext: {
+    fontSize: normalize(11),
+    fontFamily: Fonts.Figtree_Regular,
+    color: '#64748B',
+    marginTop: normalize(2),
+  },
+
+  restoreActionBtn: {
+    backgroundColor: '#06489D',
+    paddingHorizontal: normalize(12),
+    paddingVertical: normalize(6),
+    borderRadius: normalize(6),
+  },
+
+  restoreActionText: {
+    fontSize: normalize(11),
+    fontFamily: Fonts.Figtree_Bold,
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
 });
 
 export default styles;

@@ -1,5 +1,5 @@
 import { combineReducers, configureStore } from '@reduxjs/toolkit';
-import authReducer from './slice/auth.slice';
+import authReducer, { logoutSuccess } from './slice/auth.slice';
 import userReducer from './slice/user.slice';
 import { TypedUseSelectorHook, useDispatch, useSelector } from 'react-redux';
 import { persistStore, persistReducer } from 'redux-persist';
@@ -8,10 +8,18 @@ import { logger } from 'redux-logger';
 //import createSagaMiddleware from 'redux-saga';
 import rootSaga from './service/rootSaga';
 const createSagaMiddleware = require('redux-saga').default;
-const rootReducer = combineReducers({
+
+const appReducer = combineReducers({
   auth: authReducer,
   user: userReducer,
 });
+
+const rootReducer = (state: any, action: any) => {
+  if (action.type === logoutSuccess.type || action.type === 'auth/logoutSuccess') {
+    return appReducer(undefined, action);
+  }
+  return appReducer(state, action);
+};
 
 const persistConfig = {
   key: 'root',

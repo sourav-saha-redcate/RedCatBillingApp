@@ -1,53 +1,107 @@
-import React from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
+  ActivityIndicator,
   Image,
   Platform,
-  SafeAreaView,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { normalize } from '@app/utils/orientation';
-import { Colors, Fonts, Icons } from '@app/themes';
+import { Fonts, Icons } from '@app/themes';
 import { showMessage } from '@app/utils/helpers/Toast';
+import { getDashboardApi } from '@app/services/reports.service';
+import { DashboardRecentActivityDto, DashboardResponseDto } from '@app/types';
+import { getApiErrorMessage } from '@app/utils/helpers/apiError';
 
 interface HomeProps {
   navigation: any;
 }
 
-const RECENT_ACTIVITIES = [
-  {
-    id: '1',
-    invNumber: 'INV-98234',
-    timeMethod: '10:45 AM • Cash',
-    amount: '₹1,250.00',
-    icon: '🛒',
-  },
-  {
-    id: '2',
-    invNumber: 'INV-98233',
-    timeMethod: '09:15 AM • UPI',
-    amount: '₹450.50',
-    icon: '🛍️',
-  },
-  {
-    id: '3',
-    invNumber: 'INV-98232',
-    timeMethod: 'Yesterday • Card',
-    amount: '₹3,900.00',
-    icon: '📦',
-  },
-];
+const getActivityIcon = (iconType?: string, paymentMethod?: string | null): string => {
+  if (iconType === 'service') return '✂️';
+  if (iconType === 'medical') return '💊';
+  if (iconType === 'retail') return '🛒';
+  const method = (paymentMethod || '').toLowerCase();
+  if (method === 'upi') return '📱';
+  if (method === 'cash') return '💵';
+  if (method === 'card') return '💳';
+  return '🧾';
+};
+
+const formatINR = (val?: number | string): string => {
+  const num = Number(val || 0);
+  return `₹${num.toLocaleString('en-IN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+};
 
 const Home: React.FC<HomeProps> = ({ navigation }) => {
+  const [dashboard, setDashboard] = useState<DashboardResponseDto | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchDashboardData = useCallback(async (isRefresh: boolean = false) => {
+    if (isRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+    setError(null);
+
+    try {
+      const response = await getDashboardApi();
+      const resData = (response.data as any)?.data || response.data;
+      if (resData && typeof resData === 'object') {
+        setDashboard(resData);
+      } else {
+        throw new Error('Invalid dashboard payload received from server');
+      }
+    } catch (err: any) {
+      const errMsg = getApiErrorMessage(err, 'Failed to fetch dashboard data.');
+      setError(errMsg);
+      if (isRefresh) {
+        showMessage(errMsg);
+      }
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, [fetchDashboardData]);
+
+  const onRefresh = () => {
+    fetchDashboardData(true);
+  };
+
+  const storeName = dashboard?.store?.name || 'RC Billing';
+  const kpis = dashboard?.kpis;
+  const systemStatus = dashboard?.system_status;
+  const quickStats = dashboard?.quick_stats;
+  const recentActivities: DashboardRecentActivityDto[] = dashboard?.recent_activities || [];
+
   return (
     <SafeAreaView style={styles.screen}>
       <ScrollView
         contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}>
-
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={['#002B66']}
+            tintColor="#002B66"
+          />
+        }>
         {/* Top Header */}
         <View style={styles.headerRow}>
           <View style={styles.headerLeft}>
@@ -61,7 +115,14 @@ const Home: React.FC<HomeProps> = ({ navigation }) => {
                 <View style={styles.menuBar} />
               </View>
             </TouchableOpacity>
-            <Text style={styles.brandTitle}>RC Billing</Text>
+            <View>
+              <Text style={styles.brandTitle}>{storeName}</Text>
+              {dashboard?.store?.store_type ? (
+                <Text style={styles.storeTypeBadge}>
+                  {dashboard.store.store_type.toUpperCase()} STORE
+                </Text>
+              ) : null}
+            </View>
           </View>
 
           <View style={styles.headerRight}>
@@ -74,7 +135,7 @@ const Home: React.FC<HomeProps> = ({ navigation }) => {
 
             <TouchableOpacity
               activeOpacity={0.7}
-              onPress={() => showMessage('Account profile')}
+              onPress={() => navigation.navigate('Settings')}
               style={styles.avatarWrapper}>
               <Image
                 source={Icons.profile}
@@ -85,123 +146,261 @@ const Home: React.FC<HomeProps> = ({ navigation }) => {
           </View>
         </View>
 
-        {/* SUMMARY TODAY */}
-        <Text style={styles.sectionHeader}>SUMMARY TODAY</Text>
-        <View style={styles.summaryCard}>
-          <View style={styles.summaryCol}>
-            <Text style={styles.summaryLabel}>Total Revenue</Text>
-            <Text style={styles.summaryValueRevenue}>₹42,850.00</Text>
-          </View>
-          <View style={[styles.summaryCol, styles.summaryColRight]}>
-            <Text style={[styles.summaryLabel, styles.alignRight]}>Total Bills</Text>
-            <Text style={[styles.summaryValueBills, styles.alignRight]}>124</Text>
-          </View>
-        </View>
-
-        {/* QUICK ACTIONS */}
-        <Text style={styles.sectionHeader}>QUICK ACTIONS</Text>
-
-        {/* Featured Button: New Bill */}
-        <TouchableOpacity
-          activeOpacity={0.88}
-          style={styles.newBillButton}
-          onPress={() => navigation.navigate('NewBill')}>
-          <View style={styles.plusCircle}>
-            <Text style={styles.plusSign}>+</Text>
-          </View>
-          <Text style={styles.newBillText}>New Bill</Text>
-          <Text style={styles.newBillArrow}>›</Text>
-        </TouchableOpacity>
-
-        {/* 2-Column Action Cards */}
-        <View style={styles.twoColRow}>
-          <TouchableOpacity
-            style={styles.actionCard}
-            activeOpacity={0.8}
-            onPress={() => navigation.navigate('History')}>
-            <View style={styles.actionIconContainer}>
-              <Text style={styles.actionIcon}>🕒</Text>
+        {/* Error Banner with Retry */}
+        {error && !loading && (
+          <View style={styles.errorContainer}>
+            <View style={styles.errorTextRow}>
+              <Text style={styles.errorIcon}>⚠️</Text>
+              <Text style={styles.errorText}>{error}</Text>
             </View>
-            <Text style={styles.actionTitle}>Bill History</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.actionCard}
-            activeOpacity={0.8}
-            onPress={() => navigation.navigate('Summary')}>
-            <View style={styles.actionIconContainer}>
-              <Text style={styles.actionIcon}>📊</Text>
-            </View>
-            <Text style={styles.actionTitle}>Daily Summary</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Settings Card */}
-        <TouchableOpacity
-          style={styles.settingsRowCard}
-          activeOpacity={0.8}
-          onPress={() => navigation.navigate('Settings')}>
-          <Text style={styles.settingsIcon}>⚙️</Text>
-          <Text style={styles.settingsText}>Settings</Text>
-          <Text style={styles.settingsArrow}>›</Text>
-        </TouchableOpacity>
-
-        {/* Staff Performance Card */}
-        <TouchableOpacity
-          style={[styles.actionCard, styles.staffCard]}
-          activeOpacity={0.8}
-          onPress={() => navigation.navigate('Summary')}>
-          <View style={styles.actionIconContainer}>
-            <Text style={styles.actionIcon}>👥</Text>
-          </View>
-          <Text style={styles.actionTitle}>Staff Performance</Text>
-        </TouchableOpacity>
-
-        {/* RECENT ACTIVITY */}
-        <View style={styles.recentActivityHeader}>
-          <Text style={styles.sectionHeaderNoMargin}>RECENT ACTIVITY</Text>
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={() => navigation.navigate('History')}>
-            <Text style={styles.viewAllText}>View All</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Activity Items */}
-        <View style={styles.activityList}>
-          {RECENT_ACTIVITIES.map(item => (
             <TouchableOpacity
-              key={item.id}
-              activeOpacity={0.7}
-              onPress={() => navigation.navigate('History')}
-              style={styles.activityItem}>
-              <View style={styles.activityIconBox}>
-                <Text style={styles.activityItemIcon}>{item.icon}</Text>
-              </View>
-              <View style={styles.activityInfo}>
-                <Text style={styles.activityInvNumber}>{item.invNumber}</Text>
-                <Text style={styles.activityTimeMethod}>{item.timeMethod}</Text>
-              </View>
-              <Text style={styles.activityAmount}>{item.amount}</Text>
+              activeOpacity={0.8}
+              style={styles.retryButton}
+              onPress={() => fetchDashboardData(false)}>
+              <Text style={styles.retryButtonText}>Retry</Text>
             </TouchableOpacity>
-          ))}
-        </View>
+          </View>
+        )}
 
-        {/* SYSTEM STATUS */}
-        <Text style={styles.sectionHeader}>SYSTEM STATUS</Text>
-        <View style={styles.statusCard}>
-          <View style={styles.cloudRow}>
-            <Text style={styles.cloudIcon}>☁️</Text>
-            <Text style={styles.cloudText}>Cloud Sync Active</Text>
+        {/* Initial Loading Skeleton State */}
+        {loading && !dashboard ? (
+          <View style={styles.skeletonContainer}>
+            <View style={styles.skeletonCard}>
+              <ActivityIndicator size="large" color="#002B66" />
+              <Text style={styles.skeletonLoadingText}>Loading live dashboard...</Text>
+            </View>
           </View>
-          <Text style={styles.printersText}>
-            Printers online: 2 (Thermal Main, Office)
-          </Text>
-          <View style={styles.progressBarTrack}>
-            <View style={styles.progressBarFill} />
-          </View>
-          <Text style={styles.memoryText}>Memory: 2.4GB / 4GB</Text>
-        </View>
+        ) : (
+          <>
+            {/* SUMMARY TODAY */}
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionHeaderNoMargin}>SUMMARY TODAY</Text>
+              {dashboard?.date ? (
+                <Text style={styles.dateBadgeText}>{dashboard.date}</Text>
+              ) : null}
+            </View>
+
+            <View style={styles.summaryCard}>
+              <View style={styles.summaryCol}>
+                <Text style={styles.summaryLabel}>Total Revenue</Text>
+                <Text style={styles.summaryValueRevenue}>
+                  {formatINR(kpis?.today_sales)}
+                </Text>
+                {typeof kpis?.sales_growth_percentage === 'number' && (
+                  <Text
+                    style={[
+                      styles.growthText,
+                      {
+                        color:
+                          kpis.sales_growth_percentage >= 0 ? '#10B981' : '#EF4444',
+                      },
+                    ]}>
+                    {kpis.sales_growth_percentage >= 0 ? '↑ +' : '↓ '}
+                    {kpis.sales_growth_percentage.toFixed(1)}% vs yesterday
+                  </Text>
+                )}
+              </View>
+
+              <View style={[styles.summaryCol, styles.summaryColRight]}>
+                <Text style={[styles.summaryLabel, styles.alignRight]}>Total Bills</Text>
+                <Text style={[styles.summaryValueBills, styles.alignRight]}>
+                  {kpis?.today_bills_count ?? 0}
+                </Text>
+                {kpis?.average_bill_value ? (
+                  <Text style={[styles.avgTicketText, styles.alignRight]}>
+                    Avg: {formatINR(kpis.average_bill_value)}
+                  </Text>
+                ) : null}
+              </View>
+            </View>
+
+            {/* Quick KPI Chips: Cash vs UPI vs Card */}
+            {kpis && (
+              <View style={styles.paymentChipsRow}>
+                <View style={styles.kpiChip}>
+                  <Text style={styles.kpiChipLabel}>Cash</Text>
+                  <Text style={styles.kpiChipValue}>{formatINR(kpis.today_cash_sales)}</Text>
+                </View>
+                <View style={styles.kpiChip}>
+                  <Text style={styles.kpiChipLabel}>UPI</Text>
+                  <Text style={styles.kpiChipValue}>{formatINR(kpis.today_upi_sales)}</Text>
+                </View>
+                <View style={styles.kpiChip}>
+                  <Text style={styles.kpiChipLabel}>Card</Text>
+                  <Text style={styles.kpiChipValue}>{formatINR(kpis.today_card_sales)}</Text>
+                </View>
+              </View>
+            )}
+
+            {/* QUICK ACTIONS */}
+            <Text style={styles.sectionHeader}>QUICK ACTIONS</Text>
+
+            {/* Featured Action: New Bill */}
+            <TouchableOpacity
+              activeOpacity={0.88}
+              style={styles.newBillButton}
+              onPress={() => navigation.navigate('NewBill')}>
+              <View style={styles.plusCircle}>
+                <Text style={styles.plusSign}>+</Text>
+              </View>
+              <Text style={styles.newBillText}>New Bill</Text>
+              <Text style={styles.newBillArrow}>›</Text>
+            </TouchableOpacity>
+
+            {/* 2-Column Action Cards */}
+            <View style={styles.twoColRow}>
+              <TouchableOpacity
+                style={styles.actionCard}
+                activeOpacity={0.8}
+                onPress={() => navigation.navigate('History')}>
+                <View style={styles.actionIconContainer}>
+                  <Text style={styles.actionIcon}>🕒</Text>
+                </View>
+                <Text style={styles.actionTitle}>Bill History</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.actionCard}
+                activeOpacity={0.8}
+                onPress={() => navigation.navigate('Summary')}>
+                <View style={styles.actionIconContainer}>
+                  <Text style={styles.actionIcon}>📊</Text>
+                </View>
+                <Text style={styles.actionTitle}>Daily Summary</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Settings Row Card */}
+            <TouchableOpacity
+              style={styles.settingsRowCard}
+              activeOpacity={0.8}
+              onPress={() => navigation.navigate('Settings')}>
+              <Text style={styles.settingsIcon}>⚙️</Text>
+              <Text style={styles.settingsText}>Settings</Text>
+              <Text style={styles.settingsArrow}>›</Text>
+            </TouchableOpacity>
+
+            {/* Staff Performance Card */}
+            <TouchableOpacity
+              style={[styles.actionCard, styles.staffCard]}
+              activeOpacity={0.8}
+              onPress={() => navigation.navigate('Summary')}>
+              <View style={styles.actionIconContainer}>
+                <Text style={styles.actionIcon}>👥</Text>
+              </View>
+              <Text style={styles.actionTitle}>Staff Performance</Text>
+            </TouchableOpacity>
+
+            {/* RECENT ACTIVITY */}
+            <View style={styles.recentActivityHeader}>
+              <Text style={styles.sectionHeaderNoMargin}>RECENT ACTIVITY</Text>
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={() => navigation.navigate('History')}>
+                <Text style={styles.viewAllText}>View All</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Activity Items List or Empty State */}
+            {recentActivities.length === 0 ? (
+              <View style={styles.emptyActivityCard}>
+                <Text style={styles.emptyActivityIcon}>📝</Text>
+                <Text style={styles.emptyActivityTitle}>No recent activity yet</Text>
+                <Text style={styles.emptyActivitySubtitle}>
+                  Bills generated today will appear here in real time.
+                </Text>
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  style={styles.emptyCreateButton}
+                  onPress={() => navigation.navigate('NewBill')}>
+                  <Text style={styles.emptyCreateButtonText}>Create First Bill</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={styles.activityList}>
+                {recentActivities.map((item, index) => {
+                  const itemIcon = getActivityIcon(item.icon_type, item.payment_method);
+                  const displayMethod = item.payment_method
+                    ? item.payment_method.toUpperCase()
+                    : 'PAID';
+                  const timeMethod = `${item.time || ''} • ${displayMethod}`;
+
+                  return (
+                    <TouchableOpacity
+                      key={item.id || `act-${index}`}
+                      activeOpacity={0.7}
+                      onPress={() => navigation.navigate('History')}
+                      style={styles.activityItem}>
+                      <View style={styles.activityIconBox}>
+                        <Text style={styles.activityItemIcon}>{itemIcon}</Text>
+                      </View>
+                      <View style={styles.activityInfo}>
+                        <Text style={styles.activityInvNumber}>
+                          {item.bill_number || `Bill #${item.id}`}
+                        </Text>
+                        <Text style={styles.activityTimeMethod}>
+                          {item.customer_name ? `${item.customer_name} • ` : ''}
+                          {timeMethod}
+                        </Text>
+                      </View>
+                      <View style={styles.activityAmountContainer}>
+                        <Text style={styles.activityAmount}>
+                          {formatINR(item.amount)}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.activityStatusTag,
+                            item.status === 'paid'
+                              ? styles.statusPaid
+                              : styles.statusOther,
+                          ]}>
+                          {item.status ? item.status.toUpperCase() : 'PAID'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
+
+            {/* SYSTEM STATUS */}
+            <Text style={styles.sectionHeader}>SYSTEM STATUS</Text>
+            <View style={styles.statusCard}>
+              <View style={styles.cloudRow}>
+                <View style={styles.statusIndicatorGreen} />
+                <Text style={styles.cloudIcon}>☁️</Text>
+                <Text style={styles.cloudText}>
+                  {systemStatus?.cloud_sync?.label || 'Cloud Sync Active'}
+                </Text>
+              </View>
+
+              <Text style={styles.printersText}>
+                Printers online: {quickStats?.printers_count ?? 1}
+                {quickStats?.default_printer ? ` (${quickStats.default_printer})` : ''}
+              </Text>
+
+              <View style={styles.progressBarTrack}>
+                <View
+                  style={[
+                    styles.progressBarFill,
+                    {
+                      width: `${Math.min(
+                        100,
+                        Math.max(5, systemStatus?.memory?.percentage ?? 50),
+                      )}%`,
+                    },
+                  ]}
+                />
+              </View>
+              <Text style={styles.memoryText}>
+                Memory:{' '}
+                {systemStatus?.memory
+                  ? `${systemStatus.memory.used} / ${systemStatus.memory.total} (${systemStatus.memory.percentage}%)`
+                  : 'Operating normally'}
+              </Text>
+            </View>
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -232,6 +431,7 @@ const styles = StyleSheet.create({
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
+    flex: 1,
   },
 
   menuButton: {
@@ -258,6 +458,15 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#0F172A',
     letterSpacing: -0.3,
+  },
+
+  storeTypeBadge: {
+    fontSize: normalize(9.5),
+    fontFamily: Fonts.Figtree_SemiBold,
+    fontWeight: '700',
+    color: '#002B66',
+    letterSpacing: 0.5,
+    marginTop: normalize(1),
   },
 
   headerRight: {
@@ -288,6 +497,14 @@ const styles = StyleSheet.create({
     height: '100%',
   },
 
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: normalize(16),
+    marginBottom: normalize(8),
+  },
+
   sectionHeader: {
     fontSize: normalize(10.5),
     fontFamily: Fonts.DMSans_18pt_Bold,
@@ -304,6 +521,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.8,
     color: '#64748B',
+  },
+
+  dateBadgeText: {
+    fontSize: normalize(10.5),
+    fontFamily: Fonts.Figtree_Regular,
+    color: '#94A3B8',
   },
 
   summaryCard: {
@@ -349,12 +572,58 @@ const styles = StyleSheet.create({
     marginTop: normalize(4),
   },
 
+  growthText: {
+    fontSize: normalize(10),
+    fontFamily: Fonts.Figtree_SemiBold,
+    fontWeight: '600',
+    marginTop: normalize(3),
+  },
+
   summaryValueBills: {
     fontSize: normalize(20),
     fontFamily: Fonts.DMSans_18pt_Bold,
     fontWeight: '800',
     color: '#0F172A',
     marginTop: normalize(4),
+  },
+
+  avgTicketText: {
+    fontSize: normalize(10),
+    fontFamily: Fonts.Figtree_Regular,
+    color: '#64748B',
+    marginTop: normalize(3),
+  },
+
+  paymentChipsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: normalize(8),
+  },
+
+  kpiChip: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
+    borderRadius: normalize(8),
+    paddingVertical: normalize(6),
+    paddingHorizontal: normalize(8),
+    marginHorizontal: normalize(2),
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    alignItems: 'center',
+  },
+
+  kpiChipLabel: {
+    fontSize: normalize(9.5),
+    fontFamily: Fonts.Figtree_Medium,
+    color: '#64748B',
+  },
+
+  kpiChipValue: {
+    fontSize: normalize(11),
+    fontFamily: Fonts.DMSans_18pt_Bold,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginTop: normalize(2),
   },
 
   newBillButton: {
@@ -475,6 +744,7 @@ const styles = StyleSheet.create({
 
   staffCard: {
     marginTop: normalize(10),
+    width: '100%',
   },
 
   recentActivityHeader: {
@@ -536,11 +806,77 @@ const styles = StyleSheet.create({
     marginTop: normalize(2),
   },
 
+  activityAmountContainer: {
+    alignItems: 'flex-end',
+  },
+
   activityAmount: {
     fontSize: normalize(13.5),
     fontFamily: Fonts.DMSans_18pt_Bold,
     fontWeight: '800',
     color: '#0F172A',
+  },
+
+  activityStatusTag: {
+    fontSize: normalize(9),
+    fontFamily: Fonts.Figtree_Bold,
+    fontWeight: '700',
+    marginTop: normalize(2),
+  },
+
+  statusPaid: {
+    color: '#10B981',
+  },
+
+  statusOther: {
+    color: '#F59E0B',
+  },
+
+  emptyActivityCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: normalize(12),
+    padding: normalize(20),
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    marginTop: normalize(4),
+  },
+
+  emptyActivityIcon: {
+    fontSize: normalize(28),
+    marginBottom: normalize(8),
+  },
+
+  emptyActivityTitle: {
+    fontSize: normalize(13.5),
+    fontFamily: Fonts.DMSans_18pt_Bold,
+    fontWeight: '700',
+    color: '#1E293B',
+  },
+
+  emptyActivitySubtitle: {
+    fontSize: normalize(11.5),
+    fontFamily: Fonts.Figtree_Regular,
+    color: '#64748B',
+    textAlign: 'center',
+    marginTop: normalize(4),
+    lineHeight: normalize(16),
+  },
+
+  emptyCreateButton: {
+    marginTop: normalize(12),
+    paddingVertical: normalize(8),
+    paddingHorizontal: normalize(16),
+    backgroundColor: '#002B66',
+    borderRadius: normalize(8),
+  },
+
+  emptyCreateButtonText: {
+    color: '#FFFFFF',
+    fontSize: normalize(11.5),
+    fontFamily: Fonts.Figtree_Bold,
+    fontWeight: '700',
   },
 
   statusCard: {
@@ -554,6 +890,14 @@ const styles = StyleSheet.create({
   cloudRow: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+
+  statusIndicatorGreen: {
+    width: normalize(7),
+    height: normalize(7),
+    borderRadius: normalize(4),
+    backgroundColor: '#10B981',
+    marginRight: normalize(8),
   },
 
   cloudIcon: {
@@ -584,7 +928,6 @@ const styles = StyleSheet.create({
   },
 
   progressBarFill: {
-    width: '60%',
     height: '100%',
     backgroundColor: '#043377',
     borderRadius: 2,
@@ -595,5 +938,69 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.Figtree_Regular,
     color: '#64748B',
     marginTop: normalize(6),
+  },
+
+  errorContainer: {
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FCA5A5',
+    borderWidth: 1,
+    borderRadius: normalize(10),
+    padding: normalize(12),
+    marginBottom: normalize(12),
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+
+  errorTextRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: normalize(8),
+  },
+
+  errorIcon: {
+    fontSize: normalize(16),
+    marginRight: normalize(6),
+  },
+
+  errorText: {
+    fontSize: normalize(11.5),
+    fontFamily: Fonts.Figtree_Medium,
+    color: '#B91C1C',
+    flex: 1,
+  },
+
+  retryButton: {
+    backgroundColor: '#DC2626',
+    paddingHorizontal: normalize(12),
+    paddingVertical: normalize(6),
+    borderRadius: normalize(6),
+  },
+
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: normalize(11),
+    fontFamily: Fonts.Figtree_Bold,
+    fontWeight: '700',
+  },
+
+  skeletonContainer: {
+    paddingVertical: normalize(20),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  skeletonCard: {
+    padding: normalize(24),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  skeletonLoadingText: {
+    fontSize: normalize(12.5),
+    fontFamily: Fonts.Figtree_Medium,
+    color: '#64748B',
+    marginTop: normalize(12),
   },
 });

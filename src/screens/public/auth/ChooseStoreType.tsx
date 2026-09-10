@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Image,
   Platform,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -14,58 +14,203 @@ import { normalize } from '@app/utils/orientation';
 import { Colors, Fonts, Icons, Images } from '@app/themes';
 import CustomModal from '@app/components/common/CustomModal';
 import { showMessage } from '@app/utils/helpers/Toast';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { getStoreTypesApi, createCustomStoreTypeApi } from '@app/services/store.service';
+import { StoreType } from '@app/types';
+import { useAppDispatch, useAppSelector } from '@app/store';
+import { setSelectedStoreType } from '@app/store/slice/auth.slice';
 
-interface StoreTypeItem {
+export interface StoreTypeItem {
   id: string;
+  name: string;
   title: string;
+  icon?: string;
   iconType: 'scissors' | 'store' | 'medical' | 'cafe' | 'custom';
+  features?: string[];
+  isActive?: boolean;
 }
 
-const DEFAULT_STORE_TYPES: StoreTypeItem[] = [
-  { id: '1', title: 'Saloon / Barbershop', iconType: 'scissors' },
-  { id: '2', title: 'General Store', iconType: 'store' },
-  { id: '3', title: 'Medical / Pharmacy', iconType: 'medical' },
-  { id: '4', title: 'Cafe / Restaurant', iconType: 'cafe' },
-];
+const mapTypeToIcon = (iconOrName?: string): StoreTypeItem['iconType'] => {
+  if (!iconOrName) return 'custom';
+  const lower = iconOrName.toLowerCase();
+  if (lower.includes('scissors') || lower.includes('salon') || lower.includes('barber')) return 'scissors';
+  if (lower.includes('medical') || lower.includes('pharmacy') || lower.includes('health') || lower.includes('clinic')) return 'medical';
+  if (lower.includes('cafe') || lower.includes('restaurant') || lower.includes('food') || lower.includes('coffee')) return 'cafe';
+  if (lower.includes('store') || lower.includes('retail') || lower.includes('general') || lower.includes('mart') || lower.includes('shop') || lower.includes('grocery')) return 'store';
+  return 'custom';
+};
 
 const ChooseStoreType: React.FC<{ navigation: any }> = ({ navigation }) => {
-  const [storeTypes, setStoreTypes] = useState<StoreTypeItem[]>(DEFAULT_STORE_TYPES);
-  const [selectedType, setSelectedType] = useState<string>('General Store');
+  const dispatch = useAppDispatch();
+  const { selectedStoreType } = useAppSelector(state => state.auth);
+  const [storeTypes, setStoreTypes] = useState<StoreTypeItem[]>([]);
+  const [selectedId, setSelectedId] = useState<string>(selectedStoreType?.id || '');
+  const [selectedType, setSelectedType] = useState<string>(selectedStoreType?.name || '');
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [customLoading, setCustomLoading] = useState(false);
   const [customModalVisible, setCustomModalVisible] = useState(false);
   const [customInput, setCustomInput] = useState('');
 
-  const handleSelect = (title: string) => {
-    setSelectedType(title);
+  useEffect(() => {
+    fetchStoreTypes();
+  }, []);
+
+  const fetchStoreTypes = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const res = await getStoreTypesApi();
+      const rawData = (res.data as any)?.data || res.data;
+      const list: StoreType[] = Array.isArray(rawData) ? rawData : [];
+
+      // Only display store types where: isActive === true (also checking is_active)
+      const activeList = list.filter(item => {
+        if (typeof item.isActive === 'boolean') return item.isActive;
+        if (typeof item.is_active === 'boolean') return item.is_active;
+        return true;
+      });
+
+      const mapped: StoreTypeItem[] = activeList.map(item => {
+        const itemTitle = item.name || item.title || 'Store';
+        const rawIcon = item.icon || item.icon_type;
+        const apiId = item.id || (item as any)._id;
+        return {
+          id: String(apiId || itemTitle.toLowerCase().replace(/\s+/g, '-')),
+          name: itemTitle,
+          title: itemTitle,
+          icon: rawIcon,
+          iconType: mapTypeToIcon(rawIcon || itemTitle),
+          features: Array.isArray(item.features) ? item.features : [],
+          isActive: item.isActive ?? item.is_active ?? true,
+        };
+      });
+
+      setStoreTypes(mapped);
+
+      // Store selected id: keep previous selection if valid or auto-select first
+      if (mapped.length > 0) {
+        setSelectedId(prevId => {
+          const currentId = prevId || selectedStoreType?.id;
+          const match = mapped.find(m => m.id === currentId);
+          if (match) {
+            setSelectedType(match.title);
+            dispatch(setSelectedStoreType({ id: match.id, name: match.title }));
+            return match.id;
+          }
+          setSelectedType(mapped[0].title);
+          dispatch(setSelectedStoreType({ id: mapped[0].id, name: mapped[0].title }));
+          return mapped[0].id;
+        });
+      } else {
+        setSelectedId('');
+        setSelectedType('');
+        dispatch(setSelectedStoreType(null));
+      }
+    } catch (err: any) {
+      console.log('[DEBUG UI] Failed to fetch store types:', err?.message);
+      const errorMsg =
+        err?.response?.data?.message ||
+        err?.message ||
+        'Unable to load store types. Please check your connection and try again.';
+      setError(errorMsg);
+      showMessage(errorMsg);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleAddCustomType = () => {
+  const handleSelect = (item: StoreTypeItem) => {
+    setSelectedId(item.id);
+    setSelectedType(item.title);
+    dispatch(setSelectedStoreType({ id: item.id, name: item.title }));
+  };
+
+  const handleAddCustomType = async () => {
     if (!customInput.trim()) {
       showMessage('Please enter a store type name');
       return;
     }
-    const newType: StoreTypeItem = {
-      id: Date.now().toString(),
-      title: customInput.trim(),
-      iconType: 'custom',
-    };
-    setStoreTypes(prev => [...prev, newType]);
-    setSelectedType(newType.title);
-    setCustomInput('');
-    setCustomModalVisible(false);
-    showMessage(`Added "${newType.title}"`);
+    const trimmed = customInput.trim();
+    try {
+      setCustomLoading(true);
+      const res = await createCustomStoreTypeApi({
+        title: trimmed,
+        description: `${trimmed} business type`,
+      });
+      const created = (res.data as any)?.data || res.data;
+      const apiCustomId = created?.id || created?._id;
+      const customId = String(apiCustomId || trimmed.toLowerCase().replace(/\s+/g, '-'));
+      const customTitle = created?.name || created?.title || trimmed;
+      const newType: StoreTypeItem = {
+        id: customId,
+        name: customTitle,
+        title: customTitle,
+        icon: created?.icon || 'custom',
+        iconType: mapTypeToIcon(created?.icon || customTitle),
+        features: created?.features || ['custom-billing'],
+        isActive: true,
+      };
+      setStoreTypes(prev => [...prev, newType]);
+      setSelectedId(newType.id);
+      setSelectedType(newType.title);
+      dispatch(setSelectedStoreType({ id: newType.id, name: newType.title }));
+      setCustomInput('');
+      setCustomModalVisible(false);
+      showMessage(`Added "${newType.title}"`);
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || 'Failed to create store type';
+      showMessage(msg);
+      // Fallback local addition if API unavailable
+      const fallbackId = trimmed.toLowerCase().replace(/\s+/g, '-');
+      const fallbackType: StoreTypeItem = {
+        id: fallbackId,
+        name: trimmed,
+        title: trimmed,
+        icon: 'custom',
+        iconType: 'custom',
+        features: ['custom-billing'],
+        isActive: true,
+      };
+      setStoreTypes(prev => [...prev, fallbackType]);
+      setSelectedId(fallbackType.id);
+      setSelectedType(fallbackType.title);
+      dispatch(setSelectedStoreType({ id: fallbackType.id, name: fallbackType.title }));
+      setCustomInput('');
+      setCustomModalVisible(false);
+    } finally {
+      setCustomLoading(false);
+    }
   };
 
   const handleContinue = () => {
-    if (!selectedType) {
+    if (!selectedId) {
       showMessage('Please select a store type to continue');
       return;
     }
-    // Navigate to next registration step (StoreSetup) passing selected store type
-    navigation.navigate('StoreSetup', { storeType: selectedType });
+    dispatch(setSelectedStoreType({ id: selectedId, name: selectedType }));
+    // Navigate to next registration step (StoreSetup) passing selected store type and id
+    navigation.navigate('StoreSetup', {
+      storeType: selectedType,
+      storeTypeId: selectedId,
+      store_type_id: selectedId,
+    });
   };
 
-  const renderIcon = (type: StoreTypeItem['iconType'], isSelected: boolean) => {
+  const renderIcon = (
+    type: StoreTypeItem['iconType'],
+    isSelected: boolean,
+    customIcon?: string,
+  ) => {
     const iconColor = isSelected ? '#06489D' : '#475569';
+
+    if (customIcon && /\p{Emoji}/u.test(customIcon)) {
+      return (
+        <View style={styles.iconContainer}>
+          <Text style={[styles.unicodeIcon, { color: iconColor }]}>{customIcon}</Text>
+        </View>
+      );
+    }
 
     switch (type) {
       case 'scissors':
@@ -148,46 +293,93 @@ const ChooseStoreType: React.FC<{ navigation: any }> = ({ navigation }) => {
           <Text style={styles.headingText}>Choose store type</Text>
         </View>
 
-        {/* 2x2 Store Types Grid */}
-        <View style={styles.gridContainer}>
-          {storeTypes.map(item => {
-            const isSelected = selectedType === item.title;
-            return (
-              <TouchableOpacity
-                key={item.id}
-                style={[
-                  styles.card,
-                  isSelected && styles.cardSelected,
-                ]}
-                activeOpacity={0.8}
-                onPress={() => handleSelect(item.title)}>
-                {/* Active checkmark indicator */}
-                {isSelected && (
-                  <View style={styles.checkBadge}>
-                    <Text style={styles.checkText}>✓</Text>
-                  </View>
-                )}
-
-                <View
+        {/* Store Types Area - Loading, Error, Empty, and Success States */}
+        {loading ? (
+          <View style={styles.stateContainer}>
+            <ActivityIndicator size="large" color="#06489D" />
+            <Text style={styles.stateTitle}>Loading store types...</Text>
+            <Text style={styles.stateSubtitle}>Fetching available business categories</Text>
+          </View>
+        ) : error ? (
+          <View style={styles.stateContainer}>
+            <Text style={styles.errorIcon}>⚠️</Text>
+            <Text style={styles.errorTitle}>Unable to load store types</Text>
+            <Text style={styles.errorSubtitle}>{error}</Text>
+            <TouchableOpacity
+              style={styles.retryButton}
+              activeOpacity={0.8}
+              onPress={fetchStoreTypes}>
+              <Text style={styles.retryButtonText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        ) : storeTypes.length === 0 ? (
+          <View style={styles.stateContainer}>
+            <Text style={styles.emptyIcon}>🏪</Text>
+            <Text style={styles.emptyTitle}>No store types available</Text>
+            <Text style={styles.emptySubtitle}>
+              There are currently no active store types. You can add a custom store type below or try refreshing.
+            </Text>
+            <TouchableOpacity
+              style={styles.retryButton}
+              activeOpacity={0.8}
+              onPress={fetchStoreTypes}>
+              <Text style={styles.retryButtonText}>Refresh</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.gridContainer}>
+            {storeTypes.map(item => {
+              const isSelected = selectedId === item.id;
+              return (
+                <TouchableOpacity
+                  key={item.id}
                   style={[
-                    styles.iconBox,
-                    isSelected && styles.iconBoxSelected,
-                  ]}>
-                  {renderIcon(item.iconType, isSelected)}
-                </View>
-
-                <Text
-                  style={[
-                    styles.cardTitle,
-                    isSelected && styles.cardTitleSelected,
+                    styles.card,
+                    isSelected && styles.cardSelected,
                   ]}
-                  numberOfLines={2}>
-                  {item.title}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+                  activeOpacity={0.8}
+                  onPress={() => handleSelect(item)}>
+                  {/* Active checkmark indicator */}
+                  {isSelected && (
+                    <View style={styles.checkBadge}>
+                      <Text style={styles.checkText}>✓</Text>
+                    </View>
+                  )}
+
+                  <View
+                    style={[
+                      styles.iconBox,
+                      isSelected && styles.iconBoxSelected,
+                    ]}>
+                    {renderIcon(item.iconType, isSelected, item.icon)}
+                  </View>
+
+                  <Text
+                    style={[
+                      styles.cardTitle,
+                      isSelected && styles.cardTitleSelected,
+                    ]}
+                    numberOfLines={2}>
+                    {item.title}
+                  </Text>
+
+                  {item.features && item.features.length > 0 && (
+                    <View style={styles.featuresContainer}>
+                      <Text
+                        style={[
+                          styles.featuresText,
+                          isSelected && styles.featuresTextSelected,
+                        ]}
+                        numberOfLines={1}>
+                        {item.features.slice(0, 2).join(' • ')}
+                      </Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
 
         {/* Add Custom Store Type Button */}
         <TouchableOpacity
@@ -233,7 +425,6 @@ const ChooseStoreType: React.FC<{ navigation: any }> = ({ navigation }) => {
               placeholder="e.g. Clothing Boutique, Electronics, Grocery..."
               placeholderTextColor="#9CA3AF"
               style={styles.modalInput}
-              autoFocus
             />
           </View>
 
@@ -629,5 +820,116 @@ const styles = StyleSheet.create({
     fontSize: normalize(13.5),
     fontFamily: Fonts.Figtree_SemiBold,
     fontWeight: '700',
+  },
+
+  // State Containers (Loading, Empty, Error)
+  stateContainer: {
+    paddingVertical: normalize(28),
+    paddingHorizontal: normalize(16),
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: normalize(12),
+    marginVertical: normalize(8),
+    minHeight: normalize(180),
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+
+  stateTitle: {
+    fontSize: normalize(14),
+    fontFamily: Fonts.DMSans_18pt_Bold,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginTop: normalize(12),
+    textAlign: 'center',
+  },
+
+  stateSubtitle: {
+    fontSize: normalize(12),
+    fontFamily: Fonts.Figtree_Regular,
+    color: '#64748B',
+    marginTop: normalize(4),
+    textAlign: 'center',
+  },
+
+  errorIcon: {
+    fontSize: normalize(26),
+    marginBottom: normalize(4),
+  },
+
+  errorTitle: {
+    fontSize: normalize(14),
+    fontFamily: Fonts.DMSans_18pt_Bold,
+    fontWeight: '700',
+    color: '#DC2626',
+    marginTop: normalize(4),
+    textAlign: 'center',
+  },
+
+  errorSubtitle: {
+    fontSize: normalize(12),
+    fontFamily: Fonts.Figtree_Regular,
+    color: '#64748B',
+    marginTop: normalize(4),
+    textAlign: 'center',
+    marginBottom: normalize(14),
+  },
+
+  emptyIcon: {
+    fontSize: normalize(26),
+    marginBottom: normalize(4),
+  },
+
+  emptyTitle: {
+    fontSize: normalize(14),
+    fontFamily: Fonts.DMSans_18pt_Bold,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginTop: normalize(4),
+    textAlign: 'center',
+  },
+
+  emptySubtitle: {
+    fontSize: normalize(12),
+    fontFamily: Fonts.Figtree_Regular,
+    color: '#64748B',
+    marginTop: normalize(4),
+    textAlign: 'center',
+    marginBottom: normalize(14),
+  },
+
+  retryButton: {
+    backgroundColor: '#06489D',
+    paddingHorizontal: normalize(22),
+    paddingVertical: normalize(9),
+    borderRadius: normalize(8),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: normalize(4),
+  },
+
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: normalize(12.5),
+    fontFamily: Fonts.Figtree_SemiBold,
+    fontWeight: '700',
+  },
+
+  featuresContainer: {
+    marginTop: normalize(4),
+    alignItems: 'center',
+  },
+
+  featuresText: {
+    fontSize: normalize(9.5),
+    fontFamily: Fonts.Figtree_Regular,
+    color: '#94A3B8',
+    textTransform: 'capitalize',
+  },
+
+  featuresTextSelected: {
+    color: '#06489D',
+    fontFamily: Fonts.Figtree_Medium,
   },
 });

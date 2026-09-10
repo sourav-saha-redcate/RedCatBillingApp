@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,56 +13,100 @@ import {
 import { normalize } from '@app/utils/orientation';
 import { Colors, Fonts } from '@app/themes';
 import { showMessage } from '@app/utils/helpers/Toast';
+import { useAppDispatch, useAppSelector } from '@app/store';
+import { registerStoreRequest } from '@app/store/slice/auth.slice';
+import { RegisterStoreRequestPayload } from '@app/types';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 interface StoreSetupProps {
   navigation: any;
   route: {
     params?: {
       storeType?: string;
+      storeTypeId?: string;
+      store_type_id?: string;
     };
   };
 }
 
 const StoreSetup: React.FC<StoreSetupProps> = ({ navigation, route }) => {
-  const storeType = route?.params?.storeType || 'Retail Store';
+  const dispatch = useAppDispatch();
+  const { registering, accessToken, selectedStoreType } = useAppSelector(state => state.auth);
+
+  const storeType = route?.params?.storeType || selectedStoreType?.name || 'Retail Store';
+  const storeTypeId =
+    route?.params?.store_type_id ||
+    route?.params?.storeTypeId ||
+    selectedStoreType?.id;
 
   const [form, setForm] = useState({
-    storeName: '',
-    ownerName: '',
-    phone: '',
-    address: '',
-    gstNumber: '',
+    storeName: 'Royal Salon & Spa',
+    ownerName: 'John Doe',
+    phone: '9876543210',
+    address: '123 High Street, Suite 4',
+    gstNumber: '22AAAAA0000A1Z5',
   });
+
+  useEffect(() => {
+    if (accessToken) {
+      navigation.navigate('TabNavigator');
+    }
+  }, [accessToken, navigation]);
 
   const updateField = (field: string, value: string) => {
     setForm(prev => ({ ...prev, [field]: value }));
   };
 
   const handleContinue = () => {
-    // if (!form.storeName.trim()) {
-    //   showMessage('Please enter your store name');
-    //   return;
-    // }
-    // if (!form.ownerName.trim()) {
-    //   showMessage('Please enter the owner name');
-    //   return;
-    // }
-    // if (!form.phone.trim()) {
-    //   showMessage('Please enter your phone number');
-    //   return;
-    // }
-    // if (form.phone.trim().length < 10) {
-    //   showMessage('Please enter a valid 10-digit mobile number');
-    //   return;
-    // }
-    // if (!form.address.trim()) {
-    //   showMessage('Please enter your store address');
-    //   return;
-    // }
+    if (!storeTypeId) {
+      showMessage('Please select a store type to continue');
+      navigation.navigate('ChooseStoreType');
+      return;
+    }
+    if (!form.storeName.trim()) {
+      showMessage('Please enter your store name');
+      return;
+    }
+    if (!form.ownerName.trim()) {
+      showMessage('Please enter the owner name');
+      return;
+    }
+    if (!form.phone.trim()) {
+      showMessage('Please enter your phone number');
+      return;
+    }
+    if (form.phone.trim().replace(/[^0-9]/g, '').length < 10) {
+      showMessage('Please enter a valid 10-digit mobile number');
+      return;
+    }
 
-    showMessage('Store setup completed successfully!');
-    // Navigate to TabNavigator / dashboard
-    navigation.navigate('TabNavigator');
+    console.log('[DEBUG UI] Action dispatch -> REGISTER_STORE_REQUEST with API store_type_id:', {
+      store_type_id: storeTypeId,
+      store_name: form.storeName.trim(),
+      owner_name: form.ownerName.trim(),
+      phone: form.phone.trim(),
+    });
+
+    const cleanPhone = form.phone.trim().replace(/[^0-9]/g, '');
+    const formattedPhone = cleanPhone.startsWith('91') && cleanPhone.length === 12
+      ? `+${cleanPhone}`
+      : `+91${cleanPhone.slice(-10)}`;
+
+    const ownerSlug = form.ownerName.trim().toLowerCase().replace(/[^a-z0-9]/g, '') || 'owner';
+    const email = `${ownerSlug}@example.com`;
+
+    const payload: RegisterStoreRequestPayload = {
+      store_type_id: String(storeTypeId),
+      store_name: form.storeName.trim(),
+      owner_name: form.ownerName.trim(),
+      phone: formattedPhone,
+      email: email,
+      password: 'SecurePass123!',
+      address: form.address.trim() ? { address: form.address.trim() } : undefined,
+      gst_number: form.gstNumber.trim() || undefined,
+    };
+
+    dispatch(registerStoreRequest(payload));
   };
 
   return (
@@ -231,10 +275,15 @@ const StoreSetup: React.FC<StoreSetupProps> = ({ navigation, route }) => {
 
           {/* Continue Button */}
           <TouchableOpacity
-            style={styles.continueButton}
+            style={[styles.continueButton, registering && { opacity: 0.7 }]}
+            disabled={registering}
             activeOpacity={0.85}
             onPress={handleContinue}>
-            <Text style={styles.continueButtonText}>Continue  ›</Text>
+            {registering ? (
+              <ActivityIndicator color="#FFFFFF" size="small" />
+            ) : (
+              <Text style={styles.continueButtonText}>Continue  ›</Text>
+            )}
           </TouchableOpacity>
 
           {/* Terms disclaimer */}
