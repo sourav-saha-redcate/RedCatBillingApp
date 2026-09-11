@@ -105,7 +105,7 @@ const Home: React.FC<HomeProps> = ({ navigation }) => {
         {/* Top Header */}
         <View style={styles.headerRow}>
           <View style={styles.headerLeft}>
-            <TouchableOpacity
+            {/* <TouchableOpacity
               activeOpacity={0.7}
               onPress={() => navigation.navigate('SideMenu')}
               style={styles.menuButton}>
@@ -114,7 +114,7 @@ const Home: React.FC<HomeProps> = ({ navigation }) => {
                 <View style={[styles.menuBar, { width: normalize(14) }]} />
                 <View style={styles.menuBar} />
               </View>
-            </TouchableOpacity>
+            </TouchableOpacity> */}
             <View>
               <Text style={styles.brandTitle}>{storeName}</Text>
               {dashboard?.store?.store_type ? (
@@ -126,16 +126,16 @@ const Home: React.FC<HomeProps> = ({ navigation }) => {
           </View>
 
           <View style={styles.headerRight}>
-            <TouchableOpacity
+            {/* <TouchableOpacity
               activeOpacity={0.7}
               style={styles.bellButton}
               onPress={() => showMessage('No new notifications')}>
               <Text style={styles.bellIcon}>🔔</Text>
-            </TouchableOpacity>
+            </TouchableOpacity> */}
 
             <TouchableOpacity
               activeOpacity={0.7}
-              onPress={() => navigation.navigate('Settings')}
+              onPress={() => navigation.navigate('SideMenu')}
               style={styles.avatarWrapper}>
               <Image
                 source={Icons.profile}
@@ -402,7 +402,7 @@ const Home: React.FC<HomeProps> = ({ navigation }) => {
           </>
         )}
       </ScrollView>
-    </SafeAreaView>
+    </SafeAreaView >
   );
 };
 

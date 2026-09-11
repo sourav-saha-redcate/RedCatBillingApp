@@ -687,9 +687,8 @@ const Settings: React.FC = () => {
         </View>
 
         {/* 4. SYSTEM & CLOUD DATA */}
-        <Text style={styles.sectionHeader}>SYSTEM & CLOUD DATA</Text>
+        {/* <Text style={styles.sectionHeader}>SYSTEM & CLOUD DATA</Text>
         <View style={styles.card}>
-          {/* Server Health Status */}
           <View style={styles.menuRow}>
             <View style={styles.menuRowLeft}>
               <View style={styles.menuIconBox}>
@@ -728,7 +727,6 @@ const Settings: React.FC = () => {
 
           <View style={styles.rowDivider} />
 
-          {/* Cloud Sync */}
           <TouchableOpacity
             style={styles.menuRow}
             activeOpacity={0.7}
@@ -757,8 +755,6 @@ const Settings: React.FC = () => {
           </TouchableOpacity>
 
           <View style={styles.rowDivider} />
-
-          {/* Backup & Restore */}
           <TouchableOpacity
             style={styles.menuRow}
             activeOpacity={0.7}
@@ -774,7 +770,7 @@ const Settings: React.FC = () => {
 
           <View style={styles.rowDivider} />
 
-          {/* Audit & Security Logs */}
+
           <TouchableOpacity
             style={styles.menuRow}
             activeOpacity={0.7}
@@ -787,7 +783,7 @@ const Settings: React.FC = () => {
             </View>
             <Text style={styles.menuChevron}>›</Text>
           </TouchableOpacity>
-        </View>
+        </View> */}
 
         {/* 5. APP SETTINGS */}
         {/* <Text style={styles.sectionHeader}>APP SETTINGS</Text>
